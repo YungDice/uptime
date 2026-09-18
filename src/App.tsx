@@ -5,21 +5,21 @@ import { Home } from "@/screens/Home";
 import { Boards } from "@/screens/Boards";
 import { People } from "@/screens/People";
 import { SendSheet } from "@/components/SendSheet";
+import { TabBar, type Tab } from "@/components/TabBar";
 
-type Tab = "home" | "friends" | "boards";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "home", label: "Uptime" },
-  { id: "friends", label: "People" },
-  { id: "boards", label: "Boards" },
-];
+const TITLES: Record<Tab, string> = {
+  clock: "Uptime",
+  people: "People",
+  boards: "Boards",
+};
 
 export function App() {
   const store = useMemo(() => createStore(), []);
   const session = useSession(store, "you");
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTab] = useState<Tab>("clock");
   const [sending, setSending] = useState<FriendView | null>(null);
   const [trailingTo, setTrailingTo] = useState<string | null>(null);
+  const [justCheckedIn, setJustCheckedIn] = useState(false);
 
   // The notice is a one-line confirmation, not a dialog; it clears itself.
   useEffect(() => {
@@ -32,22 +32,24 @@ export function App() {
 
   if (session.error && !snapshot) {
     return (
-      <Shell>
-        <p className="mt-20 text-center text-sm text-danger">{session.error}</p>
+      <Shell title="Uptime" tab={tab} onTab={setTab}>
+        <p className="px-5 pt-16 text-center text-[15px] text-lapse">{session.error}</p>
       </Shell>
     );
   }
 
   if (!snapshot) {
     return (
-      <Shell>
-        <p className="mt-20 text-center text-sm text-muted">Reading your clock…</p>
+      <Shell title="Uptime" tab={tab} onTab={setTab}>
+        <p className="px-5 pt-16 text-center text-[15px] text-label-2">Reading your clock</p>
       </Shell>
     );
   }
 
-  const goRevive = () => {
-    setTab("friends");
+  const checkIn = async () => {
+    setJustCheckedIn(true);
+    setTimeout(() => setJustCheckedIn(false), 450);
+    await session.run(() => store.checkIn());
   };
 
   const confirmSend = async (amount: number) => {
@@ -56,65 +58,47 @@ export function App() {
     setSending(null);
     const ok = await session.run(() => store.sendTime(friend.profile.id, amount));
     if (ok) {
+      setTab("people");
       setTrailingTo(friend.profile.id);
-      setTimeout(() => setTrailingTo(null), 950);
+      setTimeout(() => setTrailingTo(null), 900);
     }
   };
 
   return (
-    <Shell>
-      <header className="flex items-center justify-between pt-2 pb-4">
-        <nav className="flex gap-1" aria-label="Sections">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                t.id === tab ? "bg-surface text-ink-text" : "text-muted hover:text-ink-text"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        {!isBackedByServer() ? (
-          <span
-            className="rounded-full bg-surface px-2.5 py-1 text-[0.6rem] font-semibold tracking-wider text-muted uppercase"
-            title="No Supabase project configured - running on local storage"
-          >
-            local
-          </span>
-        ) : null}
-      </header>
-
+    <Shell title={TITLES[tab]} tab={tab} onTab={setTab} local={!isBackedByServer()}>
       {session.notice ? (
         <div
           key={session.notice.id}
           role="status"
-          className={`animate-fade-up mb-4 rounded-xl px-4 py-3 text-sm ${
-            session.notice.tone === "good"
-              ? "bg-pulse/12 text-pulse"
-              : "bg-danger/12 text-danger"
-          }`}
+          className="animate-rise mx-5 mt-3 rounded-xl px-4 py-3 text-[15px]"
+          style={{
+            color:
+              session.notice.tone === "good" ? "var(--color-bank)" : "var(--color-lapse)",
+            background:
+              session.notice.tone === "good"
+                ? "color-mix(in srgb, var(--color-bank) 15%, transparent)"
+                : "color-mix(in srgb, var(--color-lapse) 15%, transparent)",
+          }}
         >
           {session.notice.text}
         </div>
       ) : null}
 
-      {tab === "home" ? (
+      {tab === "clock" ? (
         <Home
           snapshot={snapshot}
           now={session.now}
-          onCheckIn={() => void session.run(() => store.checkIn())}
+          fractionalNow={session.fractionalNow}
+          justCheckedIn={justCheckedIn}
+          onCheckIn={() => void checkIn()}
           onStart={() => void session.run(() => store.startStreak())}
           onStop={() => void session.run(() => store.stopStreak())}
-          onSend={() => setTab("friends")}
-          onRevive={goRevive}
+          onSend={() => setTab("people")}
+          onRevive={() => setTab("people")}
         />
       ) : null}
 
-      {tab === "friends" ? (
+      {tab === "people" ? (
         <People
           friends={snapshot.friends}
           balance={snapshot.balance}
@@ -141,10 +125,39 @@ export function App() {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({
+  children,
+  title,
+  tab,
+  onTab,
+  local,
+}: {
+  children: React.ReactNode;
+  title: string;
+  tab: Tab;
+  onTab(next: Tab): void;
+  local?: boolean;
+}) {
   return (
-    <div className="min-h-full bg-ink">
-      <main className="mx-auto w-full max-w-md px-4 pb-16">{children}</main>
+    <div className="min-h-full bg-void">
+      {/* The Clock app's large title, pinned to the left above the content. */}
+      <header
+        className="mx-auto flex max-w-md items-center justify-between px-5 pt-3 pb-1"
+        style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
+      >
+        <h1 className="text-[34px] font-bold tracking-[-0.02em] text-label">{title}</h1>
+        {local ? (
+          <span
+            className="rounded-full px-2 py-0.5 text-[11px] font-medium text-label-2"
+            style={{ background: "var(--color-raise)" }}
+            title="No Supabase schema reachable - running on local storage"
+          >
+            Local
+          </span>
+        ) : null}
+      </header>
+      <main className="mx-auto w-full max-w-md pb-24">{children}</main>
+      <TabBar tab={tab} onChange={onTab} />
     </div>
   );
 }

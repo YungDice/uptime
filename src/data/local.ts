@@ -478,6 +478,8 @@ interface SeedMember {
   name: string;
   ageDays: number;
   startDaysAgo: number | null;
+  /** Seconds past the day boundary, so the stopwatch face reads like one. */
+  startOffset: number;
   lastSeenDaysAgo: number;
   lifetimeDays: number;
   history: Array<{ lengthDays: number; endedDaysAgo: number; reason: "lapsed" | "voluntary" }>;
@@ -489,12 +491,12 @@ interface SeedMember {
  * without waiting sixty days for the window to matter.
  */
 const SEED_CAST: SeedMember[] = [
-  { id: "u_you", handle: "you", name: "You", ageDays: 240, startDaysAgo: 95, lastSeenDaysAgo: 0, lifetimeDays: 130, history: [{ lengthDays: 130, endedDaysAgo: 100, reason: "lapsed" }] },
-  { id: "u_mara", handle: "mara", name: "Mara", ageDays: 500, startDaysAgo: 412, lastSeenDaysAgo: 0, lifetimeDays: 60, history: [] },
-  { id: "u_tobi", handle: "tobi", name: "Tobi", ageDays: 300, startDaysAgo: 96, lastSeenDaysAgo: 55, lifetimeDays: 120, history: [] },
-  { id: "u_jules", handle: "jules", name: "Jules", ageDays: 400, startDaysAgo: null, lastSeenDaysAgo: 70, lifetimeDays: 210, history: [{ lengthDays: 210, endedDaysAgo: 10, reason: "lapsed" }] },
-  { id: "u_ren", handle: "ren", name: "Ren", ageDays: 90, startDaysAgo: 31, lastSeenDaysAgo: 2, lifetimeDays: 18, history: [{ lengthDays: 18, endedDaysAgo: 40, reason: "voluntary" }] },
-  { id: "u_sol", handle: "sol", name: "Sol", ageDays: 220, startDaysAgo: null, lastSeenDaysAgo: 65, lifetimeDays: 340, history: [{ lengthDays: 340, endedDaysAgo: 5, reason: "lapsed" }] },
+  { id: "u_you", handle: "you", name: "You", ageDays: 240, startDaysAgo: 95, startOffset: 16269, lastSeenDaysAgo: 0, lifetimeDays: 130, history: [{ lengthDays: 130, endedDaysAgo: 100, reason: "lapsed" }] },
+  { id: "u_mara", handle: "mara", name: "Mara", ageDays: 500, startDaysAgo: 412, startOffset: 51742, lastSeenDaysAgo: 0, lifetimeDays: 60, history: [] },
+  { id: "u_tobi", handle: "tobi", name: "Tobi", ageDays: 300, startDaysAgo: 96, startOffset: 7384, lastSeenDaysAgo: 55, lifetimeDays: 120, history: [] },
+  { id: "u_jules", handle: "jules", name: "Jules", ageDays: 400, startDaysAgo: null, startOffset: 0, lastSeenDaysAgo: 70, lifetimeDays: 210, history: [{ lengthDays: 210, endedDaysAgo: 10, reason: "lapsed" }] },
+  { id: "u_ren", handle: "ren", name: "Ren", ageDays: 90, startDaysAgo: 31, startOffset: 33117, lastSeenDaysAgo: 2, lifetimeDays: 18, history: [{ lengthDays: 18, endedDaysAgo: 40, reason: "voluntary" }] },
+  { id: "u_sol", handle: "sol", name: "Sol", ageDays: 220, startDaysAgo: null, startOffset: 0, lastSeenDaysAgo: 65, lifetimeDays: 340, history: [{ lengthDays: 340, endedDaysAgo: 5, reason: "lapsed" }] },
 ];
 
 function seedWorld(now: Seconds): World {
@@ -507,7 +509,10 @@ function seedWorld(now: Seconds): World {
       displayName: member.name,
       createdAt: now - member.ageDays * DAY,
       streak: {
-        streakStart: member.startDaysAgo === null ? null : now - member.startDaysAgo * DAY,
+        streakStart:
+          member.startDaysAgo === null
+            ? null
+            : now - member.startDaysAgo * DAY - member.startOffset,
         lastSeen: now - member.lastSeenDaysAgo * DAY,
       },
       lifetimeSeconds: member.lifetimeDays * DAY,

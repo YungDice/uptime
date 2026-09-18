@@ -40,11 +40,27 @@ export class SupabaseStore implements UptimeStore {
     const { data: session } = await this.client.auth.getSession();
     if (!session.session) {
       // Anonymous sign-in keeps the first run frictionless; the account is
-      // real and can be upgraded to email later.
+      // real and can be upgraded to email later. It is off by default on a new
+      // Supabase project, and the raw error does not say where to turn it on.
       const { error } = await this.client.auth.signInAnonymously();
-      if (error) throw new Error(error.message);
+      if (error) {
+        throw new Error(
+          /anonymous/i.test(error.message)
+            ? "Anonymous sign-ins are disabled for this Supabase project. " +
+              "Turn them on under Authentication - Sign In / Providers."
+            : error.message,
+        );
+      }
     }
-    await this.rpc("uptime_ensure_profile", { p_handle: handle });
+    // The handle is unique across the whole table, so it cannot come from the
+    // caller's preference alone - every first run would ask for the same one
+    // and the second user would collide. Derive it from the authenticated id,
+    // which is unique by construction; `handle` only seeds the display name.
+    const { data: current } = await this.client.auth.getUser();
+    const uid = current.user?.id;
+    if (!uid) throw new Error("Signed in but no user id came back.");
+
+    await this.rpc("uptime_ensure_profile", { p_handle: handleFor(uid, handle) });
     return this.refresh();
   }
 
@@ -98,7 +114,7 @@ export class SupabaseStore implements UptimeStore {
 
   private async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
     const { data, error } = await this.client.rpc(fn, args);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(explain(error));
     return data as T;
   }
 
@@ -117,4 +133,39 @@ export class SupabaseStore implements UptimeStore {
     }
     return { ok: false, message: result.message };
   }
+}
+
+/**
+ * A handle that is unique by construction and still legible.
+ *
+ * Users will want to choose their own eventually; until that exists, this is
+ * the thing that stops a second signup failing on the unique constraint.
+ */
+function handleFor(userId: string, preferred: string): string {
+  const stem = preferred.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 10) || "user";
+  const suffix = userId.replace(/-/g, "").slice(0, 8);
+  return `${stem}_${suffix}`;
+}
+
+/**
+ * Turn PostgREST's codes into something a person can act on.
+ *
+ * The two that actually happen in practice both mean the same thing - the
+ * schema has not been deployed - and the raw message ("could not find the
+ * function in the schema cache") sends people looking in the wrong place.
+ */
+function explain(error: { code?: string; message: string }): string {
+  if (error.code === "PGRST202" || error.code === "PGRST205") {
+    return (
+      "This Supabase project has no Uptime schema yet. Run the migrations " +
+      "(npm run db:push, or paste supabase/deploy.sql into the SQL editor)."
+    );
+  }
+  if (error.code === "23505") {
+    return "That handle is already taken.";
+  }
+  if (error.code === "42501") {
+    return "Permission denied by row-level security. Check the grants in 0006_boards_and_rls.sql.";
+  }
+  return error.message;
 }

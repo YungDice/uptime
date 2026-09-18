@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { CHECK_IN_WINDOW, DAY, isRunning, statusOf } from "@/core";
+import { CHECK_IN_WINDOW, DAY, isRunning, statusOf, toDays } from "@/core";
 import { LocalStore } from "../local";
 
 /** A clock the test drives, so sixty-day windows take no real time. */
@@ -46,7 +46,13 @@ describe("LocalStore", () => {
     const snap = await store.refresh();
     expect(snap.me.handle).toBe("you");
     expect(isRunning(snap.status)).toBe(true);
-    if (isRunning(snap.status)) expect(snap.status.elapsed).toBe(95 * DAY);
+    // Asserted in days, and against the record rather than a literal: the
+    // seeded run starts part-way through a day so the stopwatch face has a
+    // real time on it, and a hardcoded multiple would pin that detail here.
+    if (isRunning(snap.status)) {
+      expect(toDays(snap.status.elapsed)).toBe(95);
+      expect(snap.status.elapsed).toBe(clock.now() - snap.me.streak.streakStart!);
+    }
   });
 
   it("keeps the streak alive across a check-in but does not lengthen it", async () => {
@@ -98,13 +104,17 @@ describe("LocalStore", () => {
   });
 
   it("can still explain a reset after the sweep has resolved the lapse", async () => {
+    const before = await store.refresh();
+    const ran = before.me.streak.lastSeen - before.me.streak.streakStart!;
+
     clock.advance(CHECK_IN_WINDOW + DAY);
     const snap = await store.refresh();
 
     // The transient `lapsed` status is already gone; the run is what explains it.
     expect(snap.status.kind).toBe("idle");
     expect(snap.lastRun?.reason).toBe("lapsed");
-    expect(snap.lastRun?.length).toBe(95 * DAY);
+    expect(snap.lastRun?.length).toBe(ran);
+    expect(toDays(snap.lastRun!.length)).toBe(95);
   });
 
   it("refuses to send more than is banked", async () => {
@@ -206,13 +216,18 @@ describe("LocalStore", () => {
   });
 
   it("keeps a voluntary stop in history as its own reason", async () => {
+    const before = await store.refresh();
+    const startedAt = before.me.streak.streakStart!;
+
     const result = await store.stopStreak();
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     const last = result.snapshot.me.history[result.snapshot.me.history.length - 1]!;
     expect(last.reason).toBe("voluntary");
-    expect(last.length).toBe(95 * DAY);
+    // A voluntary stop is credited right up to the moment of stopping.
+    expect(last.length).toBe(clock.now() - startedAt);
+    expect(toDays(last.length)).toBe(95);
     expect(result.snapshot.status.kind).toBe("idle");
   });
 

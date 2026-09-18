@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SyncedClock } from "@/core";
 import type { Seconds } from "@/core";
 import type { ActionResult, Snapshot, UptimeStore } from "@/data/store";
-import { useNow } from "./useNow";
+import { useFractionalNow, useNow } from "./useNow";
 
 export interface Notice {
   id: number;
@@ -15,6 +15,8 @@ export interface Session {
   loading: boolean;
   error: string | null;
   now: Seconds;
+  /** Fractional seconds, for the stopwatch face alone. */
+  fractionalNow: number;
   notice: Notice | null;
   dismissNotice(): void;
   run(action: () => Promise<ActionResult>): Promise<boolean>;
@@ -112,6 +114,17 @@ export function useSession(store: UptimeStore, handle: string): Session {
 
   const dismissNotice = useCallback(() => setNotice(null), []);
   const now = useNow(clock, snapshot !== null);
+  const fractionalNow = useFractionalNow(clock, snapshot !== null);
 
-  return { snapshot, loading, error, now, notice, dismissNotice, run, reload };
+  return {
+    snapshot,
+    loading,
+    error,
+    now,
+    fractionalNow,
+    notice,
+    dismissNotice,
+    run,
+    reload,
+  };
 }

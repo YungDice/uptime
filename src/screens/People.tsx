@@ -33,22 +33,26 @@ export function People({
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <form onSubmit={submit} className="flex gap-2">
+    <div className="pb-4">
+      <form onSubmit={submit} className="flex gap-2 px-5 pt-3">
         <input
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
-          placeholder="Follow someone by handle"
+          placeholder="Follow by handle"
           aria-label="Handle to follow"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          className="min-w-0 flex-1 rounded-xl bg-surface px-4 py-3 text-sm text-ink-text placeholder:text-muted focus:ring-1 focus:ring-pulse/50 focus:outline-none"
+          className="min-w-0 flex-1 rounded-xl bg-raise px-4 py-2.5 text-[17px] text-label placeholder:text-label-2 focus:outline-none"
         />
         <button
           type="submit"
           disabled={handle.trim().length === 0}
-          className="rounded-xl bg-surface-2 px-4 py-3 text-sm font-semibold text-ink-text transition-colors hover:bg-surface-2/70 disabled:cursor-not-allowed disabled:text-muted"
+          className="rounded-xl px-4 py-2.5 text-[17px] font-medium disabled:opacity-35"
+          style={{
+            color: "var(--color-run)",
+            background: "color-mix(in srgb, var(--color-run) 18%, transparent)",
+          }}
         >
           Follow
         </button>

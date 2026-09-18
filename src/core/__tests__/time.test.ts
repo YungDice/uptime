@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { DAY, HOUR, MINUTE } from "../constants";
-import { SyncedClock, formatDuration, formatElapsed, formatRemaining, toDays } from "../time";
+import {
+  SyncedClock,
+  formatDuration,
+  formatElapsed,
+  formatRemaining,
+  splitStopwatch,
+  toDays,
+} from "../time";
 
 describe("formatElapsed", () => {
   it("pads to fixed width so monospace digits never reflow", () => {
@@ -51,5 +58,47 @@ describe("toDays", () => {
   it("floors", () => {
     expect(toDays(DAY + HOUR)).toBe(1);
     expect(toDays(HOUR)).toBe(0);
+  });
+});
+
+describe("splitStopwatch", () => {
+  it("splits into days, a padded clock, and hundredths", () => {
+    const p = splitStopwatch(95 * DAY + 4 * HOUR + 31 * MINUTE + 9 + 0.42);
+    expect(p.days).toBe(95);
+    expect(p.clock).toBe("04:31:09");
+    expect(p.hundredths).toBe("42");
+  });
+
+  it("pads every field so the readout never changes width", () => {
+    const p = splitStopwatch(1.05);
+    expect(p.clock).toBe("00:00:01");
+    expect(p.hundredths).toBe("05");
+  });
+
+  it("floors hundredths so seconds and hundredths never disagree", () => {
+    // 1.999s must read 01 . 99, never 01 . 00 of the next second.
+    const p = splitStopwatch(1.999);
+    expect(p.clock).toBe("00:00:01");
+    expect(p.hundredths).toBe("99");
+  });
+
+  it("clamps negatives", () => {
+    const p = splitStopwatch(-3);
+    expect(p.days).toBe(0);
+    expect(p.clock).toBe("00:00:00");
+    expect(p.hundredths).toBe("00");
+  });
+});
+
+describe("splitStopwatch precision", () => {
+  it("keeps hundredths exact at streak lengths that matter", () => {
+    // A 412-day run: the float is large enough that a fractional subtraction
+    // loses the hundredth. Every one of these must come back exact.
+    for (const h of [0, 1, 5, 42, 99]) {
+      const p = splitStopwatch(412 * DAY + 4 * HOUR + 31 * MINUTE + 9 + h / 100);
+      expect(p.hundredths).toBe(String(h).padStart(2, "0"));
+      expect(p.days).toBe(412);
+      expect(p.clock).toBe("04:31:09");
+    }
   });
 });

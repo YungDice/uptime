@@ -63,16 +63,49 @@ export function formatElapsed(seconds: Seconds): string {
   return days > 0 ? `${days}d ${hms}` : hms;
 }
 
+/** The stopwatch readout, split so each field can be set at its own scale. */
+export interface StopwatchParts {
+  days: number;
+  /** `HH:MM:SS` within the current day, zero-padded. */
+  clock: string;
+  /** Two digits, `00`-`99`. Hundredths, as the iPhone stopwatch shows them. */
+  hundredths: string;
+}
+
 /**
- * Elapsed split for the hero: a dominant day count and the ticking remainder.
+ * Split elapsed time the way a stopwatch face does.
  *
- * The references all lead with one big number and the whole string `95d
- * 00:00:01` is too wide to sit inside the ring at phone width. Splitting keeps
- * the dominant number legible without giving up the stopwatch tick.
+ * Takes fractional seconds because the hundredths are the point: this app's
+ * whole subject is the iPhone stopwatch nobody stopped, and a readout that
+ * only moves once a second is not that object.
+ *
+ * The hundredths are cosmetic by construction. The server stores whole
+ * seconds, so this is a local animation running from `streak_start` - which is
+ * exactly what the real stopwatch does too, and why it survives a restart.
  */
-export function splitElapsed(seconds: Seconds): { days: number; hms: string } {
-  const clamped = Math.max(0, Math.floor(seconds));
-  return { days: Math.floor(clamped / DAY), hms: formatElapsed(clamped % DAY) };
+export function splitStopwatch(elapsedSeconds: number): StopwatchParts {
+  // Integer milliseconds, not a fractional subtraction. At 95 days the elapsed
+  // float is ~8.2e6, and `x - Math.floor(x)` on a number that large returns
+  // 0.4199999... for 0.42, so flooring it would show 41 instead of 42. Scaling
+  // to whole milliseconds first keeps every later step exact.
+  const ms = Math.max(0, Math.round(elapsedSeconds * 1000));
+  const whole = Math.floor(ms / 1000);
+  const days = Math.floor(whole / DAY);
+  const rest = whole % DAY;
+
+  const hh = Math.floor(rest / HOUR);
+  const mm = Math.floor((rest % HOUR) / MINUTE);
+  const ss = rest % MINUTE;
+
+  // Floored, never rounded: rounding would let the readout show .00 for the
+  // next second a hundredth early, so seconds and hundredths would disagree.
+  const hundredths = Math.floor((ms % 1000) / 10);
+
+  return {
+    days,
+    clock: [hh, mm, ss].map((n) => String(n).padStart(2, "0")).join(":"),
+    hundredths: String(hundredths).padStart(2, "0"),
+  };
 }
 
 /** Human duration for gifts and balances: `3d 4h`, `18h`, `45m`. */

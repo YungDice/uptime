@@ -1,6 +1,6 @@
 import {
-  DAY,
   CHECK_IN_WINDOW,
+  DAY,
   formatDate,
   formatDuration,
   isRunning,
@@ -9,14 +9,17 @@ import {
   type Seconds,
 } from "@/core";
 import type { Snapshot } from "@/data/store";
-import { PulseHero } from "@/components/PulseHero";
-import { MilestoneBar, StatChip, WindowBar } from "@/components/Bars";
-import { BankedCard } from "@/components/BankedCard";
+import { StopwatchFace } from "@/components/StopwatchFace";
+import { Capsule, Row, Section } from "@/components/List";
 import { ReminderOffer } from "@/components/ReminderOffer";
 
 interface Props {
   snapshot: Snapshot;
+  /** Whole seconds, for everything that is not the face. */
   now: Seconds;
+  /** Fractional seconds, for the face alone. */
+  fractionalNow: number;
+  justCheckedIn: boolean;
   onCheckIn(): void;
   onStart(): void;
   onStop(): void;
@@ -24,95 +27,108 @@ interface Props {
   onRevive(): void;
 }
 
-export function Home({ snapshot, now, onCheckIn, onStart, onStop, onSend, onRevive }: Props) {
+export function Home({
+  snapshot,
+  now,
+  fractionalNow,
+  justCheckedIn,
+  onCheckIn,
+  onStart,
+  onStop,
+  onSend,
+  onRevive,
+}: Props) {
   const { me } = snapshot;
   // Derived here rather than read off the snapshot: the snapshot's status is
   // the server's reading from the moment it was taken, which would leave the
-  // counter frozen between refreshes.
+  // face frozen between refreshes.
   const status = statusOf(me.streak, now);
   const live = isRunning(status);
-  const elapsed = live ? status.elapsed : 0;
-  const milestone = milestoneProgress(elapsed);
+  const elapsed = live ? fractionalNow - (me.streak.streakStart ?? 0) : 0;
+  const milestone = milestoneProgress(live ? status.elapsed : 0);
+
   // Measured from the previous visit, not from the touch this visit just made.
   // See Snapshot.windowAnchor for why.
   const windowLeft = Math.max(0, snapshot.windowAnchor + CHECK_IN_WINDOW - now);
-  const windowFilled = Math.min(1, windowLeft / CHECK_IN_WINDOW);
+  const windowFraction = Math.min(1, windowLeft / CHECK_IN_WINDOW);
   const revivable = snapshot.friends.filter((f) => f.revive !== undefined).length;
 
   return (
-    <div className="flex flex-col gap-6">
-      <PulseHero status={status} />
+    <div className="pb-4">
+      <StopwatchFace
+        status={status}
+        elapsed={elapsed}
+        windowFraction={live ? windowFraction : 0}
+        windowLabel={
+          live
+            ? `Check in within ${Math.ceil(windowLeft / DAY)} days`
+            : snapshot.lastRun?.reason === "lapsed"
+              ? "The check-in window ran out"
+              : "Start the clock to begin"
+        }
+      />
 
-      {live ? (
-        <button
-          type="button"
-          onClick={onCheckIn}
-          className="w-full rounded-2xl bg-pulse px-5 py-4 text-base font-semibold text-ink transition-opacity hover:opacity-90"
-        >
-          I am still here
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onStart}
-          className="w-full rounded-2xl bg-pulse px-5 py-4 text-base font-semibold text-ink transition-opacity hover:opacity-90"
-        >
-          {status.kind === "lapsed" ? "Start again" : "Start your clock"}
-        </button>
-      )}
+      <div className="flex gap-3 px-5 pt-2">
+        {live ? (
+          <>
+            <Capsule tone="lapse" onClick={onStop}>
+              Stop
+            </Capsule>
+            <Capsule tone="run" wide onClick={onCheckIn} pressed={justCheckedIn}>
+              I'm Still Here
+            </Capsule>
+          </>
+        ) : (
+          <Capsule tone="run" wide onClick={onStart}>
+            {snapshot.lastRun?.reason === "lapsed" ? "Start Again" : "Start"}
+          </Capsule>
+        )}
+      </div>
 
-      {/* Offered when the user came back with the window nearly out - which is
-          the one moment they have a reason to say yes. */}
-      {live ? <ReminderOffer elapsed={elapsed} windowRemaining={windowLeft} /> : null}
-
-      {/* Said plainly, and about the run that actually ended - not about the
-          transient `lapsed` status, which the sweep on open almost always
-          resolves before anyone sees it. */}
       {!live && snapshot.lastRun?.reason === "lapsed" ? (
-        <p className="text-sm text-muted">
+        <p className="px-5 pt-4 text-[13px] text-label-2">
           Your streak reset - the check-in window ran out. It ran{" "}
           {Math.floor(snapshot.lastRun.length / DAY)} days and is kept in your history.
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2">
-        <StatChip
-          label="streak started"
-          value={me.streak.streakStart === null ? "not running" : formatDate(me.streak.streakStart)}
+      {live ? <ReminderOffer elapsed={status.elapsed} windowRemaining={windowLeft} /> : null}
+
+      <Section title="Run">
+        <Row
+          label="Started"
+          value={me.streak.streakStart === null ? "--" : formatDate(me.streak.streakStart)}
         />
-        <StatChip label="personal best" value={formatDuration(snapshot.personalBest)} />
-      </div>
-
-      {live ? (
-        <div className="flex flex-col gap-5 rounded-2xl bg-surface p-5">
-          <WindowBar fraction={windowFilled} remaining={windowLeft} />
-          <MilestoneBar
-            fraction={milestone.fraction}
-            nextDays={milestone.nextDays}
-            daysRemaining={milestone.daysRemaining}
+        <Row label="Personal best" value={formatDuration(snapshot.personalBest)} />
+        {live ? (
+          <Row
+            label="Next milestone"
+            value={milestone.nextDays === null ? "All cleared" : `${milestone.nextDays} days`}
+            sub={
+              milestone.nextDays === null
+                ? undefined
+                : `${milestone.daysRemaining} ${milestone.daysRemaining === 1 ? "day" : "days"} to go`
+            }
+            tone="run"
           />
-        </div>
-      ) : null}
+        ) : null}
+        {live ? <Row label="Window closes" value={formatDate(now + windowLeft)} /> : null}
+      </Section>
 
-      <BankedCard
-        balance={snapshot.balance}
-        sent={snapshot.totalSent}
-        received={snapshot.totalReceived}
-        sentToday={snapshot.sentInLastDay}
-        onSend={onSend}
-        onRevive={onRevive}
-        reviveCount={revivable}
-      />
+      <Section title="Banked">
+        <Row label="Balance" value={formatDuration(snapshot.balance)} tone="bank" />
+        <Row label="Given" value={formatDuration(snapshot.totalSent)} />
+        <Row label="Received" value={formatDuration(snapshot.totalReceived)} />
+      </Section>
 
-      {live ? (
-        <button
-          type="button"
-          onClick={onStop}
-          className="self-center text-xs text-muted underline underline-offset-4 transition-colors hover:text-danger"
-        >
-          Stop my clock on purpose
-        </button>
-      ) : null}
+      <div className="flex gap-3 px-5 pt-5">
+        <Capsule tone="bank" wide onClick={onSend} disabled={snapshot.balance <= 0}>
+          Send Time
+        </Capsule>
+        <Capsule wide onClick={onRevive} disabled={revivable === 0}>
+          {revivable > 0 ? `Revive (${revivable})` : "Revive"}
+        </Capsule>
+      </div>
     </div>
   );
 }

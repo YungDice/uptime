@@ -16,11 +16,14 @@
     "android:init": "tauri android init",
     "android:dev": "tauri android dev",
     "ios:init": "tauri ios init",
-    "ios:dev": "tauri ios dev"
+    "ios:dev": "tauri ios dev",
+    "db:link": "supabase link --project-ref $SUPABASE_PROJECT_REF",
+    "db:push": "supabase db push",
+    "db:diff": "supabase db diff --linked",
+    "fn:deploy": "supabase functions deploy sweep-lapsed && supabase functions deploy nudge-check-in"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
-    "@fontsource/jetbrains-mono": "^5.3.0",
     "@supabase/supabase-js": "^2.45.4",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-notification": "^2.4.0",
@@ -33,6 +36,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
+    "supabase": "^2.117.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.8",

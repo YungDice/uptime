@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { DAY, HOUR, checkGift, formatDuration, type Seconds } from "@/core";
 import type { FriendView } from "@/data/store";
+import { Capsule } from "./List";
 
 interface Props {
   friend: FriendView;
@@ -13,11 +14,9 @@ interface Props {
 const PRESETS: Seconds[] = [HOUR, 6 * HOUR, DAY, 3 * DAY, 7 * DAY];
 
 /**
- * The amount picker.
- *
- * Presets only. Time is the unit of the whole app, so letting someone type
- * "90000" seconds would be inviting a mistake in the one place the app has an
- * irreversible action.
+ * The Clock app's sheet: a rounded panel rising from the bottom edge over a
+ * dimmed field. Presets only - time is this app's unit, and letting someone
+ * type a number of seconds invites a mistake in the one irreversible action.
  */
 export function SendSheet({ friend, balance, sentToday, onCancel, onConfirm }: Props) {
   const affordable = PRESETS.filter((p) => p <= balance);
@@ -26,27 +25,32 @@ export function SendSheet({ friend, balance, sentToday, onCancel, onConfirm }: P
   const check = checkGift(amount, {
     senderBalance: balance,
     sentInLastDay: sentToday,
-    connected: true,
+    connected: friend.connected,
     isSelf: false,
   });
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/80 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: "color-mix(in srgb, var(--color-void) 62%, transparent)" }}
       role="dialog"
       aria-modal="true"
       aria-label={`Send time to ${friend.profile.displayName}`}
       onClick={onCancel}
     >
       <div
-        className="animate-fade-up w-full max-w-md rounded-t-3xl bg-surface p-6 sm:rounded-3xl"
+        className="animate-rise w-full max-w-md rounded-t-[22px] border-t border-hairline bg-raise px-5 pt-5 pb-8"
+        style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-ink-text">
+        <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-raise-2" aria-hidden="true" />
+
+        <h2 className="text-[20px] font-semibold text-label">
           Send time to {friend.profile.displayName}
         </h2>
-        <p className="mt-1 text-sm text-muted">
-          You have {formatDuration(balance)} banked. Giving it away never shortens your own streak.
+        <p className="mt-1.5 text-[15px] text-label-2">
+          You have <span className="tnum text-bank">{formatDuration(balance)}</span> banked. Giving
+          it away never shortens your own streak.
         </p>
 
         <div className="mt-5 flex flex-wrap gap-2">
@@ -59,11 +63,13 @@ export function SendSheet({ friend, balance, sentToday, onCancel, onConfirm }: P
                 type="button"
                 disabled={disabled}
                 onClick={() => setAmount(preset)}
-                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
-                  selected
-                    ? "bg-ember/20 text-ember"
-                    : "bg-surface-2 text-ink-text hover:bg-surface-2/70"
-                } disabled:cursor-not-allowed disabled:bg-surface-2/40 disabled:text-muted`}
+                className="tnum rounded-full px-4 py-2.5 text-[15px] font-medium disabled:opacity-30"
+                style={{
+                  color: selected ? "var(--color-bank)" : "var(--color-label)",
+                  background: selected
+                    ? "color-mix(in srgb, var(--color-bank) 20%, transparent)"
+                    : "var(--color-raise-2)",
+                }}
               >
                 {formatDuration(preset)}
               </button>
@@ -71,24 +77,15 @@ export function SendSheet({ friend, balance, sentToday, onCancel, onConfirm }: P
           })}
         </div>
 
-        {!check.ok ? <p className="mt-4 text-sm text-danger">{check.message}</p> : null}
+        {!check.ok ? <p className="mt-4 text-[13px] text-lapse">{check.message}</p> : null}
 
-        <div className="mt-6 flex gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex-1 rounded-xl bg-surface-2 px-4 py-3 text-sm font-semibold text-ink-text transition-colors hover:bg-surface-2/70"
-          >
+        <div className="mt-6 flex gap-3">
+          <Capsule wide onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!check.ok}
-            onClick={() => onConfirm(amount)}
-            className="flex-1 rounded-xl bg-ember px-4 py-3 text-sm font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-muted"
-          >
+          </Capsule>
+          <Capsule tone="bank" wide disabled={!check.ok} onClick={() => onConfirm(amount)}>
             Send {check.ok ? formatDuration(amount) : ""}
-          </button>
+          </Capsule>
         </div>
       </div>
     </div>

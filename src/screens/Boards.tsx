@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { BOARDS, formatDuration, type BoardEntry, type BoardId } from "@/core";
 import type { UptimeStore } from "@/data/store";
+import { Row } from "@/components/List";
 
 /**
- * Read-only queries over what the streak and ledger already store. Nothing
- * here is a maintained total, so a board can never disagree with a profile.
+ * Read-only queries over what the streak and ledger already store, presented
+ * as lap rows under a segmented control - the Clock app's own way of switching
+ * between views of the same thing.
  */
 export function Boards({ store, meId }: { store: UptimeStore; meId: string }) {
   const [active, setActive] = useState<BoardId>("current-streak");
@@ -24,53 +26,55 @@ export function Boards({ store, meId }: { store: UptimeStore; meId: string }) {
   const meta = BOARDS.find((b) => b.id === active);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        {BOARDS.map((board) => (
-          <button
-            key={board.id}
-            type="button"
-            onClick={() => setActive(board.id)}
-            className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold whitespace-nowrap transition-colors ${
-              board.id === active
-                ? "bg-pulse/15 text-pulse"
-                : "bg-surface text-muted hover:text-ink-text"
-            }`}
-          >
-            {board.label}
-          </button>
-        ))}
+    <div className="pb-4">
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-5 pt-3 pb-1">
+        {BOARDS.map((board) => {
+          const on = board.id === active;
+          return (
+            <button
+              key={board.id}
+              type="button"
+              onClick={() => setActive(board.id)}
+              className="shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors"
+              style={{
+                color: on ? "var(--color-run)" : "var(--color-label-2)",
+                background: on
+                  ? "color-mix(in srgb, var(--color-run) 18%, transparent)"
+                  : "var(--color-raise)",
+              }}
+            >
+              {board.label}
+            </button>
+          );
+        })}
       </div>
 
-      {meta ? <p className="text-sm text-muted">{meta.blurb}</p> : null}
+      {meta ? <p className="px-5 pt-2 text-[13px] text-label-2">{meta.blurb}</p> : null}
 
       {entries === null ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <p className="px-5 py-10 text-center text-[15px] text-label-3">Loading</p>
       ) : entries.length === 0 ? (
-        <p className="rounded-2xl bg-surface p-5 text-sm text-muted">
+        <p className="px-5 py-10 text-center text-[15px] text-label-2">
           Nothing on this board yet.
         </p>
       ) : (
-        <ol className="flex flex-col gap-1.5">
+        <div className="mt-5 border-t border-hairline">
           {entries.map((entry, index) => (
-            <li
+            <Row
               key={entry.userId}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3 ${
-                entry.userId === meId ? "bg-pulse/10" : "bg-surface"
-              }`}
-            >
-              <span className="tnum w-6 font-mono text-xs text-muted">{index + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-text">
-                {entry.displayName}
-              </span>
-              <span className="tnum font-mono text-sm text-pulse">
-                {entry.unit === "count"
-                  ? `${entry.value}`
-                  : formatDuration(entry.value)}
-              </span>
-            </li>
+              label={
+                <span className="flex items-baseline gap-3">
+                  <span className="tnum w-5 text-[15px] text-label-3">{index + 1}</span>
+                  <span className={entry.userId === meId ? "text-run" : undefined}>
+                    {entry.displayName}
+                  </span>
+                </span>
+              }
+              value={entry.unit === "count" ? `${entry.value}` : formatDuration(entry.value)}
+              tone={entry.userId === meId ? "run" : "default"}
+            />
           ))}
-        </ol>
+        </div>
       )}
     </div>
   );

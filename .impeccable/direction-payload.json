@@ -1,0 +1,153 @@
+{
+  "title": "Choose the visual world for Uptime",
+  "question": "The roll assigned Tide Table. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Tide Table",
+      "kicker": "THE ROLL",
+      "lineage": "printed tide tables, nautical almanacs, ephemerides",
+      "thesis": "A book of time you consult rarely and trust absolutely - exactly how this app is used.",
+      "palette": ["#DDE4D8", "#141A17", "#A3B0A4", "#C2186B", "#1B5E8C"],
+      "materials": ["tinted chart stock", "two-colour spot overprint", "hairline table rules"],
+      "viewport": "One page of a tide table, edge to edge on chart stock, no cards. A running head with a hairline under it; the run set as the page's one headline figure in magenta overprint; an unbroken ticked scale beneath it carrying the milestones and a marker at now; then ruled two-column rows for began, best, window closes. The check-in is a dated stamp block, not a pill.",
+      "risk": "A printed reference document can read as inert or bureaucratic - a spreadsheet instead of a game. Only the scale of the headline figure and the overprint keep it from being a form.",
+      "raised": [
+        { "from": "challenger-zine", "raise": "Ground commitment: the tinted stock owns the entire field at full strength, never a white app with a tint on its panels." },
+        { "from": "challenger-drum-machine", "raise": "One unbroken line: the run scale spans the full width and never wraps, only scales, with a marker at now." },
+        { "from": "challenger-cloud-edge", "raise": "Colour only where it carries state: magenta and blue are reserved for the live run and banked time; every other mark is black on stock." },
+        { "from": "challenger-sneaker-wall", "raise": "One rigid label grammar: every record - a friend, a board row, a gift - is the same ruled two-column entry, never a card." }
+      ],
+      "wireframe": {
+        "cols": 12,
+        "rows": 12,
+        "regions": [
+          { "label": "running head + rule", "x": 0, "y": 0, "w": 12, "h": 1 },
+          { "label": "headline figure (overprint)", "x": 0, "y": 1, "w": 8, "h": 3, "accent": true },
+          { "label": "fine figures", "x": 8, "y": 2, "w": 4, "h": 2 },
+          { "label": "unbroken run scale", "x": 0, "y": 4, "w": 12, "h": 1, "accent": true },
+          { "label": "stamp: I am still here", "x": 0, "y": 5, "w": 12, "h": 2, "accent": true },
+          { "label": "ruled record rows", "x": 0, "y": 7, "w": 12, "h": 3 },
+          { "label": "banked time column", "x": 0, "y": 10, "w": 12, "h": 2 }
+        ]
+      }
+    },
+    {
+      "id": "model-pick",
+      "label": "The Passbook",
+      "kicker": "IMPECCABLE'S PICK",
+      "lineage": "bank savings passbooks, stamped ledger rows",
+      "thesis": "Time as a balance you can see, deposit and withdraw, stamped row by row.",
+      "palette": ["#1E3A2F", "#E7E2D2", "#9A1B1B", "#C9A227"],
+      "materials": ["cloth cover", "gold foil", "ruled ledger stock", "rubber stamp"],
+      "viewport": "The inside spread of a savings book: the running balance as the one large figure, every gift a stamped ruled row with date and amount, withdrawals in red, the cover's foil rule framing the page.",
+      "risk": "The most legible answer to 'time as currency', and therefore where most attempts at this product would land. Familiar by construction.",
+      "wireframe": {
+        "cols": 12,
+        "rows": 12,
+        "regions": [
+          { "label": "foil rule + book head", "x": 0, "y": 0, "w": 12, "h": 2 },
+          { "label": "running balance", "x": 0, "y": 2, "w": 12, "h": 3, "accent": true },
+          { "label": "stamped ledger rows", "x": 0, "y": 5, "w": 12, "h": 5 },
+          { "label": "deposit / withdraw", "x": 0, "y": 10, "w": 12, "h": 2, "accent": true }
+        ]
+      }
+    },
+    {
+      "id": "challenger-crouwel",
+      "label": "Grid Specimen",
+      "verdict": "competitive",
+      "lineage": "Wim Crouwel gridded type specimens",
+      "thesis": "The elapsed figure built cell by cell on a construction grid that stays visible.",
+      "palette": ["#FFFFFF", "#111111", "#0033FF"],
+      "materials": ["construction-grid hairlines", "grid-built letterforms"],
+      "viewport": "The day count assembled from grid cells at monumental scale, the armature visible beneath it, small neutral grotesk for every label.",
+      "risk": "Reads as a type exercise rather than a product when the figure is the only thing the grid ever builds.",
+      "case": "Holds product clarity: a numeral that rebuilds cell by cell as it changes is genuinely apt for a ticking figure, and a visible grid suits a table world. Loses audience identification - modernist specimens are not this audience's native world.",
+      "hero": "https://impeccable.style/worlds/cards/crouwel-grid-specimen-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/crouwel-grid-specimen.webp"
+    },
+    {
+      "id": "challenger-cracktro",
+      "label": "Cracktro Queue",
+      "verdict": "competitive",
+      "lineage": "demoscene cracktro title screens",
+      "thesis": "Rank is depth: nothing is ever enclosed by a rule or a box.",
+      "palette": ["#000000", "#8A8F93", "#E8E4DA", "#FFB000"],
+      "materials": ["emissive void", "bitmap face", "drifting dust fields"],
+      "viewport": "One bitmap line of the day count dead still on black, three dust fields drifting behind it, an amber caret at the head of the line.",
+      "risk": "Permits one signal colour, and this product needs two distinguishable roles - the live run and the banked balance would collapse into each other.",
+      "case": "Holds audience identification in the computing sense - 'uptime' is a sysadmin's word, and depth-as-rank is a real leaderboard mechanic that fights the card-stack rut hard. Loses product clarity on the single-accent constraint and on drift, which the motion budget cannot afford.",
+      "hero": "https://impeccable.style/worlds/cards/operate-c-cracktro-scroller-queue-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/operate-c-cracktro-scroller-queue.webp"
+    },
+    {
+      "id": "challenger-drum-machine",
+      "label": "Step Row",
+      "verdict": "declined",
+      "lineage": "early-80s rhythm machine step rows",
+      "thesis": "Sixteen lit steps under a chase light that always says where now is.",
+      "palette": ["#2A2A2A", "#D6302B", "#E8A33D", "#F0E9D8"],
+      "materials": ["charcoal panel", "candy step keys", "segmented LED readout"],
+      "viewport": "The window as a sixteen-step row, the chase light sweeping toward the deadline.",
+      "risk": "A sixteen-step loop implies repetition and tempo.",
+      "case": "Loses product clarity decisively: a looping step row misrepresents a single unbroken 60-day span, and tempo implies frequency of action - exactly the daily-pressure model this product refuses.",
+      "kept": "One unbroken line that never wraps, only scales, with a marker for now.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-drum-machine-step-row-hero.webp"
+    },
+    {
+      "id": "challenger-zine",
+      "label": "Copy-Shop Zine",
+      "verdict": "declined",
+      "lineage": "photocopied zine interiors",
+      "thesis": "Colour is the sheet, never the mark; one stock per page.",
+      "palette": ["#F2C230", "#E8452C", "#1A1A1A", "#EDE8DC"],
+      "materials": ["goldenrod copy stock", "Letter Gothic", "platen degradation"],
+      "viewport": "One typed column down a coloured sheet, the heading enlarged until its counters fill in.",
+      "risk": "Copier degradation is hostile to a figure that must stay exactly legible.",
+      "case": "Loses both: zine culture is not this audience's world, and a degraded display face actively fights a precise elapsed readout that changes every second.",
+      "kept": "Ground commitment - colour owns the whole field at full strength, never accents on neutral.",
+      "hero": "https://impeccable.style/worlds/cards/rw-copy-shop-zine-interior-hero.webp"
+    },
+    {
+      "id": "challenger-cloud-edge",
+      "label": "Iridescent Cloud Edge",
+      "verdict": "declined",
+      "lineage": "diffraction at a forming cloud edge",
+      "thesis": "Colour confined to a narrow spectral band while the field stays achromatic.",
+      "palette": ["#FAFAF8", "#5A6570", "#A8E6C4", "#F0B8CE", "#9B8CE0"],
+      "materials": ["cloud white ground", "hairline spectral fringe"],
+      "viewport": "An achromatic text field with a narrow mint-rose-violet fringe marking the active band.",
+      "risk": "A pastel fringe cannot carry two strong, instantly distinguishable state roles.",
+      "case": "Loses both: meteorological optics are not this audience's world, and a plain white ground with colour only at hairline edges is the soft default the calibration warns about.",
+      "kept": "Colour allowed only where it carries state; everything else stays achromatic.",
+      "hero": "https://impeccable.style/worlds/cards/clouds-storms-auroras-iridescent-cloud-edge-hero.webp"
+    },
+    {
+      "id": "challenger-sneaker-wall",
+      "label": "Sneaker Box Wall",
+      "verdict": "declined",
+      "lineage": "sneaker archive walls, end-label stacks",
+      "thesis": "A wall of end labels, each box pulled half out and hinged open.",
+      "palette": ["#C4551F", "#141414", "#F7F4EE", "#3B7A57"],
+      "materials": ["box board", "silhouette line art", "tissue interiors"],
+      "viewport": "A stacked wall indexed by end labels, the live one slid half out.",
+      "risk": "A stack of discrete boxes cannot carry one continuous elapsed figure.",
+      "case": "Loses product clarity: the home screen is a single unbroken span, and an index of discrete objects misrepresents it. Culturally adjacent to the audience, but the core screen fails.",
+      "kept": "One rigid label grammar repeated on every item, never a bespoke card.",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-sneaker-box-stacks-hero.webp"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "code", "toggle": false },
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "The dark streak dashboard: a big number in a ring, stat cards, progress bars - executed impeccably.",
+    "palette": ["#0A0E17", "#131826", "#4CD3E0", "#E8B34C"],
+    "materials": ["near-black surfaces", "rounded cards", "accent glow"],
+    "viewport": "What WHOOP and every streak app ships, at full craft. This is also what Uptime looks like today.",
+    "risk": "Indistinguishable from the competition by design - and you have already seen this one built."
+  },
+  "steer": true
+}
