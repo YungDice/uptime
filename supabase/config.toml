@@ -1,0 +1,27 @@
+project_id = "uptime"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:1420"
+additional_redirect_urls = ["http://localhost:1420"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+
+# Anonymous sign-in keeps the first run frictionless - an account exists from
+# the first tap so a streak can start, and can be upgraded to email later.
+[auth.email]
+enable_signup = true
+
+[functions.sweep-lapsed]
+verify_jwt = false

@@ -1,0 +1,24 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri build output and generated platform projects
+src-tauri/target/
+src-tauri/gen/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

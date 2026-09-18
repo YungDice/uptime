@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+@theme {
+  /* The one palette. Colour carries meaning here: --pulse is the live streak
+     and the check-in moment, --ember is banked time and donations, and nothing
+     else gets an accent. A user can tell the two systems apart at a glance. */
+  --color-ink: #0a0e17;
+  --color-surface: #131826;
+  --color-surface-2: #1a2133;
+  --color-pulse: #4cd3e0;
+  --color-ember: #e8b34c;
+  --color-ink-text: #f2f4f8;
+  --color-muted: #8891a6;
+  --color-danger: #e8735c;
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  color: var(--color-ink-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* One of the two things in this app that moves on its own: the ambient
+   breathing of the pulse ring. Slow enough to read as alive rather than as a
+   loading spinner. */
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.045);
+    opacity: 0.95;
+  }
+}
+
+@keyframes breathe-soft {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+
+/* The other: a light trail from sender to recipient the instant time moves. */
+@keyframes trail {
+  0% {
+    transform: translateX(-60%) scaleX(0.2);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(160%) scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 6.5s ease-in-out infinite;
+}
+
+.animate-breathe-soft {
+  animation: breathe-soft 6.5s ease-in-out infinite;
+}
+
+.animate-trail {
+  animation: trail 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-fade-up {
+  animation: fade-up 220ms ease-out both;
+}
+
+/* Motion is decoration here, never information - every state is legible from
+   colour and text alone, so switching it all off costs the user nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-breathe,
+  .animate-breathe-soft,
+  .animate-trail,
+  .animate-fade-up {
+    animation: none;
+  }
+}
+
+/* Tabular figures keep the ticking readout from shuffling sideways. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}

@@ -1,0 +1,26 @@
+[package]
+name = "uptime"
+version = "0.1.0"
+description = "Uptime - a streak you keep by existing"
+authors = ["Yung Dice"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+# The mobile targets link against a library, not a binary; desktop uses the
+# thin main.rs below. One crate serves all three.
+name = "uptime_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# Used by `tauri dev` to enable devtools in release-ish builds.
+custom-protocol = ["tauri/custom-protocol"]
