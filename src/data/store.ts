@@ -6,6 +6,13 @@ import type { Seconds } from "@/core/time";
 import type { StreakRecord, StreakRun, StreakStatus } from "@/core/streak";
 import type { UserProfile, UserState } from "@/core/types";
 
+/** What reviving a particular lapsed run would cost and give back. */
+export interface Revive {
+  lostLength: Seconds;
+  restores: Seconds;
+  cost: Seconds;
+}
+
 /**
  * A friend as the home screen needs them: enough to show whether their streak
  * is alive and, if it is not, what rescuing it would cost.
@@ -38,8 +45,19 @@ export interface FriendView {
    * one of the two that deserves a button.
    */
   followsMe: boolean;
-  /** Present only when their streak has lapsed and is revivable. */
-  revive?: { lostLength: Seconds; restores: Seconds; cost: Seconds };
+  /**
+   * Present only when their streak has lapsed and is revivable.
+   *
+   * Optional *and* nullable, because the two adapters spell "no" differently
+   * and the caller cannot tell which one it is talking to: the local adapter
+   * leaves the key off, and the SQL read models build the object with
+   * `jsonb_build_object`, which has to put something in the slot and puts
+   * `null` there. Writing one of those two into the type made every
+   * `!== undefined` test quietly wrong against the server - `null` passes it -
+   * so a friend who was merrily running got offered a Revive button. Test this
+   * for truthiness, never against a single flavour of absence.
+   */
+  revive?: Revive | null;
 }
 
 /**
@@ -127,6 +145,25 @@ export function liveGiveable(snapshot: Snapshot, now: Seconds): Seconds {
 }
 
 /**
+ * Whether there is a broken streak here that somebody could buy back.
+ *
+ * A named predicate rather than a test written out at each call site, and the
+ * reason is the `revive` field's two spellings of absence (see its own note).
+ * Four screens ask this question; two of them asked it as `!== undefined`,
+ * which is satisfied by the `null` the server actually sends, so both offered
+ * to revive people whose clocks had never stopped. The bug was not that either
+ * test was wrong on its own - it was that the question was open-coded at all,
+ * which made it possible for two of the four to drift.
+ *
+ * Takes the carrier rather than the field so the call reads as a question
+ * about the person, and so a future rule - say, a lapse too old to buy back -
+ * has one place to be added.
+ */
+export function isRevivable(who: { revive?: Revive | null }): boolean {
+  return who.revive !== undefined && who.revive !== null;
+}
+
+/**
  * Someone else, as their profile page needs them.
  *
  * Deliberately not a `FriendView`. That shape exists to draw a row in a list
@@ -150,8 +187,19 @@ export interface PublicProfile {
   connected: boolean;
   iFollow: boolean;
   followsMe: boolean;
-  /** Present only when their streak has lapsed and is revivable. */
-  revive?: { lostLength: Seconds; restores: Seconds; cost: Seconds };
+  /**
+   * Present only when their streak has lapsed and is revivable.
+   *
+   * Optional *and* nullable, because the two adapters spell "no" differently
+   * and the caller cannot tell which one it is talking to: the local adapter
+   * leaves the key off, and the SQL read models build the object with
+   * `jsonb_build_object`, which has to put something in the slot and puts
+   * `null` there. Writing one of those two into the type made every
+   * `!== undefined` test quietly wrong against the server - `null` passes it -
+   * so a friend who was merrily running got offered a Revive button. Test this
+   * for truthiness, never against a single flavour of absence.
+   */
+  revive?: Revive | null;
 }
 
 /**

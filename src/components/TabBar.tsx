@@ -29,7 +29,7 @@ export function TabBar({
     <nav
       className="absolute inset-x-0 bottom-0 z-40"
       style={{
-        background: "var(--color-void)",
+        background: "var(--color-page)",
         paddingBottom: "max(env(safe-area-inset-bottom), 4px)",
       }}
       aria-label="Sections"
@@ -56,7 +56,7 @@ export function TabBar({
                     />
                   ) : null}
                 </span>
-                <span className="text-[10px] font-medium tracking-[0.01em]">{item.label}</span>
+                <span className="text-tab">{item.label}</span>
               </button>
             </li>
           );

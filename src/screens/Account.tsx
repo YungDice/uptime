@@ -62,13 +62,13 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
 
   return (
     <div className="pb-4">
-      <p className="px-5 pt-5 text-[15px] text-label-2">
+      <p className="px-5 pt-5 text-callout text-label-2">
         You're playing without an account. Your clock is running and your streak is real - it just
         stays on this device, and two things stay switched off:
       </p>
       <ul className="mt-3 px-5">
         {ANONYMOUS_LIMITS.map((limit) => (
-          <li key={limit} className="flex gap-2.5 py-1 text-[15px] text-label">
+          <li key={limit} className="flex gap-2.5 py-1 text-callout text-label">
             <span aria-hidden="true" className="text-label-3">
               &mdash;
             </span>
@@ -91,7 +91,7 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
               role="tab"
               aria-selected={mode === m}
               onClick={() => setMode(m)}
-              className="flex-1 rounded-full py-1.5 text-[15px] font-medium transition-colors"
+              className="flex-1 rounded-full py-1.5 text-callout font-medium transition-colors"
               style={{
                 color: mode === m ? "var(--color-run)" : "var(--color-label-2)",
                 background:
@@ -133,13 +133,13 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
       </form>
 
       {mode === "up" ? (
-        <p className="mt-4 px-5 text-[13px] text-label-2">
+        <p className="mt-4 px-5 text-footnote text-label-2">
           {days > 0
             ? `Your ${days}-day record and your banked time carry over - creating an account upgrades this one rather than starting a new one.`
             : "Creating an account upgrades this one rather than starting a new one, so whatever is on the clock stays on it."}
         </p>
       ) : (
-        <p className="mt-4 px-5 text-[13px] text-label-2">
+        <p className="mt-4 px-5 text-footnote text-label-2">
           Signing in replaces the streak on this device with the one on your account.
         </p>
       )}
@@ -212,10 +212,16 @@ function SignedIn({
             <CameraIcon />
           </span>
         </button>
+        {/* `image/*` rather than the three formats that get stored. The file
+            is re-encoded before it is uploaded, so the stored format is not
+            the picked one and naming it here only narrows the picker. It also
+            buys the one case that matters: an iPhone hands a HEIC straight
+            through to a filter that lists it, and transcodes it to JPEG for a
+            filter that asks for images in general. */}
         <input
           ref={file}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/*"
           className="hidden"
           onChange={(event) => {
             const chosen = event.target.files?.[0];
@@ -225,16 +231,16 @@ function SignedIn({
           }}
         />
 
-        <h2 className="mt-3 text-[24px] font-semibold tracking-[-0.01em] text-label">
+        <h2 className="mt-3 text-title text-label">
           {me.displayName}
         </h2>
-        <p className="text-[15px] text-label-2">@{me.handle}</p>
+        <p className="text-callout text-label-2">@{me.handle}</p>
 
         {me.avatarUrl !== null ? (
           <button
             type="button"
             onClick={() => onSetAvatar(null)}
-            className="mt-1.5 text-[13px] text-label-2"
+            className="mt-1.5 text-footnote text-label-2"
           >
             Remove photo
           </button>
@@ -322,7 +328,7 @@ function SignedIn({
             Sign out
           </Capsule>
         </div>
-        <p className="mt-3 text-[13px] text-label-2">
+        <p className="mt-3 text-footnote text-label-2">
           Signing out leaves this device on a fresh anonymous clock. Your account keeps its streak.
         </p>
       </div>
@@ -376,12 +382,12 @@ function Stat({
   return (
     <div className="surface rounded-xl px-2 py-3 text-center">
       <div
-        className="tnum truncate text-[17px] font-semibold tracking-[-0.01em]"
+        className="tnum truncate text-body font-semibold"
         style={{ color }}
       >
         {value}
       </div>
-      <div className="mt-1 text-[11px] font-medium tracking-[0.04em] text-label-3 uppercase">
+      <div className="mt-1 text-overline text-label-3 uppercase">
         {label}
       </div>
     </div>
@@ -404,7 +410,7 @@ function Pill({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded-full px-3 py-1.5 text-[13px] font-medium disabled:opacity-35"
+      className="rounded-full px-3 py-1.5 text-footnote font-medium disabled:opacity-35"
       style={
         tone === "run"
           ? {
@@ -453,7 +459,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="block pb-1 text-[13px] text-label-2">{label}</span>
+      <span className="block pb-1 text-footnote text-label-2">{label}</span>
       <input
         type={type}
         value={value}
@@ -462,9 +468,9 @@ function Field({
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
-        className="w-full rounded-xl bg-raise px-4 py-2.5 text-[17px] text-label placeholder:text-label-2 focus:outline-none"
+        className="w-full rounded-xl bg-raise px-4 py-2.5 text-body text-label placeholder:text-label-2 focus:outline-none"
       />
-      {hint ? <span className="block pt-1 text-[13px] text-label-2">{hint}</span> : null}
+      {hint ? <span className="block pt-1 text-footnote text-label-2">{hint}</span> : null}
     </label>
   );
 }

@@ -57,7 +57,7 @@ export function App() {
   if (session.error && !snapshot) {
     return (
       <Shell title="Uptime" tab={tab} onTab={setTab}>
-        <p className="px-5 pt-16 text-center text-[15px] text-lapse">{session.error}</p>
+        <p className="px-5 pt-16 text-center text-callout text-lapse">{session.error}</p>
       </Shell>
     );
   }
@@ -65,7 +65,7 @@ export function App() {
   if (!snapshot) {
     return (
       <Shell title="Uptime" tab={tab} onTab={setTab}>
-        <p className="px-5 pt-16 text-center text-[15px] text-label-2">Reading your clock</p>
+        <p className="px-5 pt-16 text-center text-callout text-label-2">Reading your clock</p>
       </Shell>
     );
   }
@@ -126,7 +126,7 @@ export function App() {
         <div
           key={session.notice.id}
           role="status"
-          className="animate-rise surface-tint mx-5 mt-3 rounded-xl px-4 py-3 text-[15px]"
+          className="animate-rise surface-tint mx-5 mt-3 rounded-xl px-4 py-3 text-callout"
           style={{
             color:
               session.notice.tone === "good" ? "var(--color-bank)" : "var(--color-lapse)",

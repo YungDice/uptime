@@ -181,7 +181,7 @@ export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: 
                 >
                   {days}
                 </span>
-                <span className="absolute bottom-2 left-full ml-2 text-sm font-medium whitespace-nowrap text-label-2">
+                <span className="absolute bottom-2 left-full ml-2 text-callout font-medium whitespace-nowrap text-label-2">
                   {days === 1 ? "day" : "days"}
                 </span>
               </div>
@@ -200,7 +200,7 @@ export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: 
               >
                 0
               </span>
-              <span className="mt-3 text-sm text-label-2">Not running</span>
+              <span className="mt-3 text-callout text-label-2">Not running</span>
             </>
           )}
         </div>
@@ -218,13 +218,13 @@ export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: 
           }}
         />
         <span
-          className="text-[11px] font-semibold tracking-[0.14em] uppercase"
+          className="text-overline uppercase"
           style={{ color: accent }}
         >
           {live ? "Running" : status.kind === "lapsed" ? "Lapsed" : "Stopped"}
         </span>
       </div>
-      <p className="mt-1.5 text-[13px] text-label-2">{windowLabel}</p>
+      <p className="mt-1.5 text-footnote text-label-2">{windowLabel}</p>
     </section>
   );
 }

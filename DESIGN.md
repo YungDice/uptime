@@ -2,6 +2,7 @@
 name: Uptime
 description: The iPhone stopwatch that was never stopped, running as an app.
 colors:
+  page: "#0c0c0e"
   void: "#000000"
   raise: "#1c1c1e"
   raise-2: "#2c2c2e"
@@ -12,62 +13,81 @@ colors:
   run: "#ff9f0a"
   bank: "#30d158"
   lapse: "#ff453a"
+# Eleven steps, and the name of each one is the Tailwind utility that applies
+# it: `text-display`, `text-title`, and so on, defined in `src/styles.css`.
+# That is deliberate. An earlier version of this file named roles the code did
+# not have - a 76px display that nothing rendered - so every call site invented
+# its own pixel value instead, and the same role ended up at three sizes on
+# three screens. A step here that you cannot type as a class is a step that
+# will be ignored.
 typography:
   display:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "76px"
+    fontSize: "44px"
     fontWeight: 300
     lineHeight: 1
-    letterSpacing: "-0.045em"
+    letterSpacing: "-0.03em"
     fontFeature: "tnum 1, ss01 1"
-  headline:
+  screen:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "34px"
     fontWeight: 700
-    lineHeight: 1.1
+    lineHeight: 1.05
     letterSpacing: "-0.02em"
-  readout:
-    fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "24px"
-    fontWeight: 300
-    lineHeight: 1.1
-    letterSpacing: "normal"
-    fontFeature: "tnum 1, ss01 1"
   title:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "20px"
+    fontSize: "22px"
     fontWeight: 600
-    lineHeight: 1.25
+    lineHeight: 1.2
+    letterSpacing: "-0.01em"
+  numeral:
+    fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "22px"
+    fontWeight: 700
+    lineHeight: 1
     letterSpacing: "normal"
+    fontFeature: "tnum 1, ss01 1"
   body:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "17px"
     fontWeight: 400
     lineHeight: 1.3
     letterSpacing: "normal"
-  body-secondary:
+  callout:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "15px"
+    fontWeight: 400
+    lineHeight: 1.45
+    letterSpacing: "normal"
+  footnote:
+    fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "13px"
     fontWeight: 400
     lineHeight: 1.35
     letterSpacing: "normal"
   caption:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "13px"
+    fontSize: "12px"
     fontWeight: 400
-    lineHeight: 1.35
+    lineHeight: 1.3
     letterSpacing: "normal"
-  section-header:
+  micro:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "13px"
+    fontSize: "11px"
+    fontWeight: 400
+    lineHeight: 1.25
+    letterSpacing: "normal"
+  overline:
+    fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "11px"
     fontWeight: 600
-    lineHeight: 1.2
-    letterSpacing: "0.06em"
-  tab-label:
+    lineHeight: 1
+    letterSpacing: "0.14em"
+  tab:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "10px"
     fontWeight: 500
-    lineHeight: 1.2
+    lineHeight: 1
     letterSpacing: "0.01em"
 rounded:
   pill: "9999px"
@@ -138,7 +158,7 @@ components:
     padding: "10px 16px"
     typography: "{typography.body}"
   row:
-    backgroundColor: "{colors.void}"
+    backgroundColor: "{colors.page}"
     textColor: "{colors.label}"
     rounded: "0px"
     padding: "10px 20px"
@@ -153,11 +173,11 @@ components:
     rounded: "{rounded.sheet}"
     padding: "20px 20px 32px"
   tab-bar:
-    backgroundColor: "{colors.void}"
+    backgroundColor: "{colors.page}"
     textColor: "{colors.label-2}"
     rounded: "0px"
     padding: "8px 0"
-    typography: "{typography.tab-label}"
+    typography: "{typography.tab}"
   tab-active:
     textColor: "{colors.run}"
 ---
@@ -168,14 +188,14 @@ components:
 
 **Creative North Star: "The Clock That Was Never Stopped"**
 
-Uptime wears the iPhone Clock app's grammar because the product *is* that screen: a stopwatch somebody started and never stopped. The Timer's ring with its 60-tick track carries the check-in window; the Stopwatch's face carries the run, down to hundredths. Nothing quotes the Clock app decoratively — the whole surface is built out of its materials: a true-black ground, light-weight white numerals with tabular figures, hairline separators, full-bleed ruled rows, and pill controls filled with a low-alpha tint of their own colour.
+Uptime wears the iPhone Clock app's grammar because the product *is* that screen: a stopwatch somebody started and never stopped. The Timer's ring with its 60-tick track carries the check-in window; the Stopwatch's face carries the run, down to hundredths. Nothing quotes the Clock app decoratively — the whole surface is built out of its materials: a near-black ground, light-weight white numerals with tabular figures, hairline separators, full-bleed ruled rows, and pill controls filled with a low-alpha tint of their own colour.
 
-Density is high and even. Every screen is one bounded column of rows on black, inset 20px from the leading edge, with a collapsing large title above and a solid tab bar below. There is no card stack, no flame, no gradient hero, no dashboard widgetry. The refused reference is explicit: the card-stack streak dashboard and its flame.
+Density is high and even. Every screen is one bounded column of rows on the page colour, inset 20px from the leading edge, with a collapsing large title above and a solid tab bar below. There is no card stack, no flame, no gradient hero, no dashboard widgetry. The refused reference is explicit: the card-stack streak dashboard and its flame.
 
-Colour is a law rather than a palette. Orange owns the live run, green owns banked time, red owns a lapse, grey owns everything else — and nothing else in the app gets an accent. Depth is done entirely with tonal layering (#000000 → #1c1c1e → #2c2c2e) and hairlines; there is not a single box-shadow in the build.
+Colour is a law rather than a palette. Orange owns the live run, green owns banked time, red owns a lapse, grey owns everything else — and nothing else in the app gets an accent. Depth is done entirely with tonal layering (#0c0c0e → #1c1c1e → #2c2c2e) and hairlines; there is not a single box-shadow in the build.
 
 **Key Characteristics:**
-- True-black ground (#000000), never a dark grey
+- Near-black ground (#0c0c0e) - lifted just off true black so a sheet reads as the next step up rather than as a different material
 - Light-weight (300) tabular numerals for every measurement
 - 0.5px hairlines at 2dppx, 1px below
 - Pill controls with an 18% tinted fill and a full-strength label
@@ -197,7 +217,8 @@ A near-monochrome dark field where three saturated signal colours each own one s
 - **Lapse Red** (`{colors.lapse}`): A streak that ran out. The Stop control, broken-friend rows, validation messages, error notices, and the ring when a run has lapsed.
 
 ### Neutral
-- **Void** (`{colors.void}`): The ground for every screen, the tab bar fill, and the dimming scrim behind a sheet (at 62%).
+- **Page** (`{colors.page}`): The ground for every screen and the tab bar fill.
+- **Void** (`{colors.void}`): True black, and no longer a background. Two things still want the absence of a surface rather than the colour of one: the gap punched between an avatar and its ring, and the dimming scrim behind a sheet.
 - **Raise** (`{colors.raise}`): The first tonal step up. Sheets, input fields, chip rests, segmented-control troughs, and the pressed state of a row.
 - **Raise 2** (`{colors.raise-2}`): The second step. The ring's unfilled track, the sheet's grab handle, unselected preset buttons.
 - **Hairline** (`{colors.hairline}`): Every separator and border, plus the 60 tick marks around the ring.
@@ -221,20 +242,28 @@ A near-monochrome dark field where three saturated signal colours each own one s
 **Character:** One family worked hard across a wide weight range: hairline-thin at display size, plain at body size, semibold only for headers and control labels. The personality comes from the figures rather than the letterforms — every number in this app is a measurement, so every number is tabular.
 
 ### Hierarchy
-- **Display** (300, 76px, line-height 1, -0.045em, tabular): The day count at the centre of the ring. Drops to 68px in the idle "0" state. Nothing else uses this size.
-- **Headline** (700, 34px, -0.02em): The large screen title in the scroll header; fades to zero opacity as it collapses.
-- **Readout** (300, 24px, tabular): The running `HH:MM:SS` beneath the day count; the `.ss` hundredths sit at the same size in Label 2.
-- **Title** (600, 20px): Sheet headings.
-- **Body** (400, 17px): Row labels, row values, capsule labels, input text, and the collapsed compact-bar title (at 600).
-- **Body Secondary** (400, 15px): Explanatory paragraphs, empty states, friend sub-figures, segmented-control labels.
-- **Caption** (400, 13px): Sub-lines under rows, hints, notes, small pill buttons, the window label.
-- **Section Header** (600, 13px, 0.06em, uppercase): The grouped-list header sitting above a section's leading rule.
-- **Tab Label** (500, 10px, 0.01em): The tab bar only.
+
+Eleven steps. Each is a Tailwind utility of the same name (`text-display`,
+`text-overline`, ...) and each carries its own line-height, tracking and weight,
+so a call site names the role and gets the whole decision. No screen writes a
+pixel size; `text-[20px]` in a diff is a bug.
+
+- **`text-display`** (300, 44px, lh 1, -0.03em, tabular): The ticking readout, wherever it appears — the amount in the send sheet, a profile's counter, the banked total on the give panel. One size, because they are one thing seen in three places.
+- **`text-screen`** (700, 34px, -0.02em): The large screen title in the scroll header; fades to zero opacity as it collapses.
+- **`text-title`** (600, 22px, -0.01em): Every heading below that — a sheet's title, a person's name on their profile or account.
+- **`text-numeral`** (700, 22px, tabular): The figure struck into a podium block. Same size as a title and deliberately its own token: it is bold and untracked, and would follow a title's negative tracking into nonsense.
+- **`text-body`** (400, 17px): Row labels, row values, capsule labels, input text.
+- **`text-callout`** (400, 15px, lh 1.45): Explanatory paragraphs, empty states, friend sub-figures.
+- **`text-footnote`** (400, 13px): Sub-lines under rows, hints, notes, the window label, medal captions.
+- **`text-caption`** (400, 12px): Handles, board chips, relationship pills.
+- **`text-micro`** (400, 11px): The smallest readable step, for text inside a tight grid — a medal's detail line, the "rising" indicator.
+- **`text-overline`** (600, 11px, 0.14em, uppercase): Every all-caps label — RECORD, RUNNING, TO GIVE, RANK, ACHIEVEMENTS. One spelling, because three of them used to disagree.
+- **`text-tab`** (500, 10px, 0.01em): The tab bar only, and the only 10px in the app.
 
 ### Named Rules
 **The Tabular Figures Rule.** Every figure in the app is a measurement, so every figure carries `font-variant-numeric: tabular-nums` plus `"tnum" 1, "ss01" 1` (the `.tnum` class). This is the detail that stops a stopwatch face jittering as it runs; a number rendered in proportional figures is a bug.
 
-**The Light-at-Size Rule.** Weight falls as size rises. Display and readout are 300, body is 400, and 600/700 are reserved for headers, control labels, and the large title. A bold numeral at display size belongs to a fitness dashboard, not to a clock.
+**The Light-at-Size Rule.** Weight falls as size rises. `text-display` is 300, body and below are 400, and 600/700 are reserved for headings, all-caps labels, and the podium numeral. A bold numeral at display size belongs to a fitness dashboard, not to a clock.
 
 ## Layout
 
@@ -251,7 +280,7 @@ Scroll behaviour: the 34px title fades out and the compact bar fades in over 200
 
 ## Elevation & Depth
 
-There are no shadows in this system — not ambient, not structural, not on hover. Depth is entirely tonal: `#000000` ground, `#1c1c1e` for a raised surface, `#2c2c2e` for the step above that, and `#38383a` hairlines to divide. The only blurred material in the build is the collapsed title bar, which sits on 92% void with `saturate(180%) blur(24px)`; the tab bar deliberately does **not** use a material, because translucency over true black is invisible by definition and at 94% it let content bleed through under the labels.
+There are no shadows in this system — not ambient, not structural, not on hover. Depth is entirely tonal: `#0c0c0e` ground, `#1c1c1e` for a raised surface, `#2c2c2e` for the step above that, and `#38383a` hairlines to divide. The only blurred material in the build is the collapsed title bar, which sits on 92% page with `saturate(180%) blur(24px)`; the tab bar deliberately does **not** use a material, because translucency over a ground this dark is invisible by definition and at 94% it let content bleed through under the labels.
 
 ### Named Rules
 **The No Card Rule.** Persistent content is never boxed. Lists are full-bleed rows divided by hairlines and a screen's content sits directly on the void. Rounded tonal surfaces exist only for things that arrive and leave — the send sheet, the reminder offer, a notice banner — and even those are flat fills with no shadow and no border beyond the sheet's top hairline.
@@ -304,7 +333,7 @@ The hundredths tick on `requestAnimationFrame` and fall back to whole seconds un
 ## Do's and Don'ts
 
 ### Do:
-- **Do** put new screens on `void` (#000000) with full-bleed hairline-ruled rows, inset 20px on the leading edge only.
+- **Do** put new screens on `page` (#0c0c0e) with full-bleed hairline-ruled rows, inset 20px on the leading edge only.
 - **Do** define that 20px inset once per element: `padding-left` on the row, `margin-left` on the section's leading rule.
 - **Do** mark every figure with the `.tnum` class.
 - **Do** tint coloured controls at 18% and keep the label at full strength.
@@ -317,7 +346,7 @@ The hundredths tick on `requestAnimationFrame` and fall back to whole seconds un
 - **Don't** add a box-shadow anywhere, for any state.
 - **Don't** put persistent content in a card; rounded tonal surfaces are for sheets, notices, and transient offers only.
 - **Don't** introduce a fifth colour, or reuse `run` / `bank` / `lapse` for anything other than the live run, banked time, and a lapse.
-- **Don't** make the tab bar translucent — over true black a material reads as a content leak, not as depth.
+- **Don't** make the tab bar translucent — over a ground this dark a material reads as a content leak, not as depth.
 - **Don't** tint both a ring and the figure inside it.
 - **Don't** add a third authored animation. Motion is `confirm` (the check-in press) and `handoff` (the sweep along the recipient's row); `rise` is entry-only for sheets and notices.
 - **Don't** set a figure at display size in a weight above 300, or render any number in proportional figures.

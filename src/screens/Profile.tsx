@@ -8,7 +8,7 @@ import {
   statusOf,
   type Seconds,
 } from "@/core";
-import type { PublicProfile, UptimeStore } from "@/data/store";
+import { isRevivable, type PublicProfile, type UptimeStore } from "@/data/store";
 import { Avatar } from "@/components/Avatar";
 import { Capsule, Row, Section } from "@/components/List";
 import { Sheet } from "@/components/Sheet";
@@ -93,7 +93,7 @@ export function Profile({
   if (state === "loading") {
     return (
       <Sheet label="Profile" onClose={onClose} tall>
-        <p className="py-16 text-center text-[15px] text-label-3">Loading</p>
+        <p className="py-16 text-center text-callout text-label-3">Loading</p>
       </Sheet>
     );
   }
@@ -101,7 +101,7 @@ export function Profile({
   if (state === "missing") {
     return (
       <Sheet label="Profile" onClose={onClose} tall>
-        <p className="py-16 text-center text-[15px] text-label-2">
+        <p className="py-16 text-center text-callout text-label-2">
           That account is no longer around.
         </p>
       </Sheet>
@@ -112,7 +112,7 @@ export function Profile({
   const status = statusOf(them.streak, now);
   const live = isRunning(status);
   const { days, clock } = splitStopwatch(live ? status.elapsed : 0);
-  const canRevive = them.revive !== undefined && them.connected;
+  const canRevive = isRevivable(them) && them.connected;
 
   return (
     <Sheet label={`${them.profile.displayName}'s profile`} onClose={onClose} tall>
@@ -135,10 +135,10 @@ export function Profile({
             </span>
           </span>
 
-          <h2 className="mt-3 text-center text-[24px] font-semibold tracking-[-0.01em] text-label">
+          <h2 className="mt-3 text-center text-title text-label">
             {them.profile.displayName}
           </h2>
-          <p className="text-[15px] text-label-2">@{them.profile.handle}</p>
+          <p className="text-callout text-label-2">@{them.profile.handle}</p>
 
           <FollowState profile={them} />
         </header>
@@ -152,32 +152,32 @@ export function Profile({
             <>
               <div className="flex items-baseline justify-center gap-2">
                 <span
-                  className="tnum text-[46px] leading-none font-light tracking-[-0.04em]"
+                  className="tnum text-display"
                   style={{ color: "var(--color-label)" }}
                 >
                   {days}
                 </span>
-                <span className="text-[15px] font-medium text-label-2">
+                <span className="text-callout font-medium text-label-2">
                   {days === 1 ? "day" : "days"}
                 </span>
               </div>
-              <p className="tnum mt-1.5 text-[15px] text-label-2">{clock}</p>
-              <p className="mt-2 text-[11px] font-semibold tracking-[0.14em] text-run uppercase">
+              <p className="tnum mt-1.5 text-callout text-label-2">{clock}</p>
+              <p className="mt-2 text-micro font-semibold tracking-[0.14em] text-run uppercase">
                 Running
               </p>
             </>
           ) : them.revive ? (
             <>
-              <p className="text-[17px] text-lapse">Their streak broke</p>
-              <p className="mt-1 text-[13px] text-label-2">
+              <p className="text-body text-lapse">Their streak broke</p>
+              <p className="mt-1 text-footnote text-label-2">
                 It ran {Math.floor(them.revive.lostLength / DAY)} days. Reviving brings back{" "}
                 {Math.floor(them.revive.restores / DAY)} for {formatDuration(them.revive.cost)}.
               </p>
             </>
           ) : (
             <>
-              <p className="text-[17px] text-label-3">No streak running</p>
-              <p className="mt-1 text-[13px] text-label-2">
+              <p className="text-body text-label-3">No streak running</p>
+              <p className="mt-1 text-footnote text-label-2">
                 Their clock is stopped. Nothing is counting.
               </p>
             </>
@@ -216,7 +216,7 @@ export function Profile({
           <button
             type="button"
             onClick={() => onUnfollow(them.profile.id)}
-            className="mt-3 w-full text-center text-[13px] text-label-2"
+            className="mt-3 w-full text-center text-footnote text-label-2"
           >
             Unfollow
           </button>
@@ -257,7 +257,7 @@ function FollowState({ profile }: { profile: PublicProfile }) {
 
   return (
     <span
-      className="surface-tint mt-2.5 rounded-full px-3 py-1 text-[12px] font-medium"
+      className="surface-tint mt-2.5 rounded-full px-3 py-1 text-caption font-medium"
       style={{ color: tint, ["--tint" as string]: tint }}
     >
       {text}

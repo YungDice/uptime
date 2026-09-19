@@ -37,9 +37,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     if (!error) return this.props.children;
 
     return (
-      <div className="flex h-full flex-col items-center justify-center bg-void px-8 text-center">
-        <p className="text-[17px] font-semibold text-label">Something went wrong on screen</p>
-        <p className="mt-2 max-w-xs text-[15px] text-label-2">
+      <div className="flex h-full flex-col items-center justify-center bg-page px-8 text-center">
+        <p className="text-body font-semibold text-label">Something went wrong on screen</p>
+        <p className="mt-2 max-w-xs text-callout text-label-2">
           Your streak is safe - it lives on the server and is worked out from timestamps, so
           nothing here can shorten it.
         </p>
@@ -47,7 +47,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="mt-6 rounded-full px-6 py-3 text-[17px] font-medium"
+          className="mt-6 rounded-full px-6 py-3 text-body font-medium"
           style={{
             color: "var(--color-run)",
             background: "color-mix(in srgb, var(--color-run) 18%, transparent)",
@@ -56,7 +56,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           Reload
         </button>
 
-        <p className="mt-8 max-w-xs font-mono text-[11px] break-words text-label-3">
+        <p className="mt-8 max-w-xs font-mono text-micro break-words text-label-3">
           {error.message}
         </p>
       </div>

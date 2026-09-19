@@ -78,23 +78,23 @@ export function SendSheet({ friend, giveable, sentToday, onCancel, onConfirm }: 
       <header className="flex items-center gap-3">
         <Avatar profile={friend.profile} size={44} />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[20px] font-semibold tracking-[-0.01em] text-label">
+          <h2 className="truncate text-title text-label">
             Send to {friend.profile.displayName}
           </h2>
-          <p className="truncate text-[13px] text-label-2">@{friend.profile.handle}</p>
+          <p className="truncate text-footnote text-label-2">@{friend.profile.handle}</p>
         </div>
       </header>
 
       {/* The amount, at the scale of the thing being decided. */}
       <div className="mt-6 flex items-baseline justify-center gap-2">
         <span
-          className="tnum text-[42px] leading-none font-light tracking-[-0.03em]"
+          className="tnum text-display"
           style={{ color: amount > 0 ? "var(--color-bank)" : "var(--color-label-3)" }}
         >
           {formatElapsed(amount)}
         </span>
       </div>
-      <p className="mt-1.5 text-center text-[13px] text-label-2">
+      <p className="mt-1.5 text-center text-footnote text-label-2">
         of <span className="tnum">{formatElapsed(max)}</span> you can give
         {allowance < giveable ? " today" : ""}
       </p>
@@ -132,7 +132,7 @@ export function SendSheet({ friend, giveable, sentToday, onCancel, onConfirm }: 
         ) : null}
       </div>
 
-      <p className="mt-4 text-[13px] text-label-2">
+      <p className="mt-4 text-footnote text-label-2">
         {max <= 0 && allowance <= 0
           ? "You've hit today's sending limit. It resets on a rolling 24 hours."
           : max <= 0
@@ -141,7 +141,7 @@ export function SendSheet({ friend, giveable, sentToday, onCancel, onConfirm }: 
       </p>
 
       {!check.ok && max > 0 && amount > 0 ? (
-        <p className="mt-2 text-[13px] text-lapse">{check.message}</p>
+        <p className="mt-2 text-footnote text-lapse">{check.message}</p>
       ) : null}
 
       <div className="mt-6 flex gap-3">
@@ -169,7 +169,7 @@ function Chip({
     <button
       type="button"
       onClick={onClick}
-      className={`tnum rounded-full px-3.5 py-2 text-[13px] font-semibold transition-transform active:scale-95 ${
+      className={`tnum rounded-full px-3.5 py-2 text-footnote font-semibold transition-transform active:scale-95 ${
         on ? "surface-tint" : "surface-2"
       }`}
       style={

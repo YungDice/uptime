@@ -34,8 +34,8 @@ export function ConfirmSheet({
 }) {
   return (
     <Sheet label={title} onClose={onCancel}>
-      <h2 className="text-[22px] font-semibold tracking-[-0.01em] text-label">{title}</h2>
-      <div className="mt-2 text-[15px] leading-[1.45] text-label-2">{body}</div>
+      <h2 className="text-title text-label">{title}</h2>
+      <div className="mt-2 text-callout text-label-2">{body}</div>
 
       {/* Cancel first and confirm second, left to right. The destructive one is
           where the thumb is least likely to land by momentum after the tap that

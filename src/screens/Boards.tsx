@@ -54,7 +54,7 @@ export function Boards({
               type="button"
               onClick={() => setActive(board.id)}
               aria-pressed={on}
-              className={`rounded-xl px-2 py-2.5 text-[12px] leading-tight font-semibold text-balance transition-transform active:scale-[0.97] ${
+              className={`rounded-xl px-2 py-2.5 text-caption leading-tight font-semibold text-balance transition-transform active:scale-[0.97] ${
                 on ? "surface-tint" : "surface"
               }`}
               style={
@@ -69,13 +69,13 @@ export function Boards({
         })}
       </div>
 
-      {meta ? <p className="px-5 pt-3 text-[13px] text-label-2">{meta.blurb}</p> : null}
+      {meta ? <p className="px-5 pt-3 text-footnote text-label-2">{meta.blurb}</p> : null}
 
       {anonymous ? (
         <button
           type="button"
           onClick={onOpenAccount}
-          className="mt-3 block w-full px-5 text-left text-[13px] text-label-2"
+          className="mt-3 block w-full px-5 text-left text-footnote text-label-2"
         >
           You are not ranked while playing without an account.{" "}
           <span className="text-run">Create one</span> - your streak carries over.
@@ -83,9 +83,9 @@ export function Boards({
       ) : null}
 
       {entries === null ? (
-        <p className="px-5 py-10 text-center text-[15px] text-label-3">Loading</p>
+        <p className="px-5 py-10 text-center text-callout text-label-3">Loading</p>
       ) : entries.length === 0 ? (
-        <p className="px-5 py-10 text-center text-[15px] text-label-2">
+        <p className="px-5 py-10 text-center text-callout text-label-2">
           Nothing on this board yet.
         </p>
       ) : (
@@ -146,7 +146,7 @@ function RankRow({
         className="hairline flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors active:bg-raise"
       >
         <span
-          className="tnum w-6 shrink-0 text-[15px] font-medium"
+          className="tnum w-6 shrink-0 text-callout font-medium"
           style={{ color: isMe ? "var(--color-run)" : "var(--color-label-3)" }}
         >
           {place}
@@ -154,15 +154,15 @@ function RankRow({
         <Avatar profile={entry} size={34} />
         <span className="min-w-0 flex-1">
           <span
-            className="block truncate text-[17px]"
+            className="block truncate text-body"
             style={{ color: isMe ? "var(--color-run)" : "var(--color-label)" }}
           >
             {entry.displayName}
           </span>
-          <span className="block truncate text-[12px] text-label-3">@{entry.handle}</span>
+          <span className="block truncate text-caption text-label-3">@{entry.handle}</span>
         </span>
         <span
-          className="tnum shrink-0 text-[17px]"
+          className="tnum shrink-0 text-body"
           style={{ color: isMe ? "var(--color-run)" : "var(--color-label-2)" }}
         >
           {entry.unit === "count" ? entry.value : formatDuration(entry.value)}

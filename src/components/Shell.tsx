@@ -49,21 +49,21 @@ export function Shell({
   }, [tab]);
 
   return (
-    <div className="flex h-full justify-center bg-void">
+    <div className="flex h-full justify-center bg-page">
       <div className="relative flex h-full w-full max-w-md flex-col lg:border-x lg:border-hairline">
         {/* Compact bar: the title's destination, not a second header. */}
         <div
           className="pointer-events-none absolute inset-x-0 top-0 z-30 transition-opacity duration-200"
           style={{
             opacity: collapsed ? 1 : 0,
-            background: "color-mix(in srgb, var(--color-void) 92%, transparent)",
+            background: "color-mix(in srgb, var(--color-page) 92%, transparent)",
             backdropFilter: "saturate(180%) blur(24px)",
             WebkitBackdropFilter: "saturate(180%) blur(24px)",
             paddingTop: "env(safe-area-inset-top)",
           }}
         >
           <div className="hairline flex items-center justify-center px-5 py-3">
-            <span className="text-[17px] font-semibold text-label">{title}</span>
+            <span className="text-body font-semibold text-label">{title}</span>
           </div>
         </div>
 
@@ -73,14 +73,14 @@ export function Shell({
             style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
           >
             <h1
-              className="text-[34px] font-bold tracking-[-0.02em] text-label transition-opacity duration-200"
+              className="text-screen text-label transition-opacity duration-200"
               style={{ opacity: collapsed ? 0 : 1 }}
             >
               {title}
             </h1>
             {local ? (
               <span
-                className="rounded-full px-2 py-0.5 text-[11px] font-medium text-label-2"
+                className="rounded-full px-2 py-0.5 text-micro font-medium text-label-2"
                 style={{ background: "var(--color-raise)" }}
                 title="No Supabase schema reachable - running on local storage"
               >

@@ -30,12 +30,12 @@ export function Medal({ achievement, delay = 0 }: { achievement: Achievement; de
     >
       <Disc earned={earned} metal={metal} glyph={glyph} progress={progress ?? 0} />
       <p
-        className="mt-2.5 w-full text-[13px] leading-tight font-semibold text-balance"
+        className="mt-2.5 w-full text-footnote leading-tight font-semibold text-balance"
         style={{ color: earned ? "var(--color-label)" : "var(--color-label-2)" }}
       >
         {label}
       </p>
-      <p className="mt-0.5 w-full text-[11px] leading-tight text-balance text-label-3">{detail}</p>
+      <p className="mt-0.5 w-full text-micro leading-tight text-balance text-label-3">{detail}</p>
     </li>
   );
 }

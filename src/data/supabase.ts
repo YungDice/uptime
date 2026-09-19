@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { prepareAvatar } from "./image";
 import { systemClock, type BoardEntry, type BoardId, type Clock, type Seconds } from "@/core";
 import type {
   Account,
@@ -189,9 +190,18 @@ export class SupabaseStore implements UptimeStore {
     const uid = current.user?.id;
     if (uid === undefined) return { ok: false, message: "Not signed in." };
 
-    const ext = EXTENSIONS[file.type];
-    if (ext === undefined) return { ok: false, message: "Use a JPEG, PNG or WebP image." };
-    if (file.size > AVATAR_MAX_BYTES) return { ok: false, message: "That image is over 2 MB." };
+    // Whatever was picked becomes a small square before it goes anywhere, so
+    // the bucket's size limit and its format list are satisfied by
+    // construction rather than by turning a camera roll away at the door.
+    let image: Blob;
+    try {
+      image = await prepareAvatar(file);
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : "That image did not work." };
+    }
+
+    const ext = EXTENSIONS[image.type];
+    if (ext === undefined) return { ok: false, message: "That image format is not supported." };
 
     // Named for the moment it was uploaded, not for the user. A fixed filename
     // would be the same URL every time, so every viewer that had already seen
@@ -201,11 +211,39 @@ export class SupabaseStore implements UptimeStore {
     const path = `${uid}/${Date.now()}.${ext}`;
     const { error } = await this.client.storage
       .from("avatars")
-      .upload(path, file, { contentType: file.type, upsert: false });
+      .upload(path, image, { contentType: image.type, upsert: false });
     if (error) return { ok: false, message: error.message };
 
     const { data: published } = this.client.storage.from("avatars").getPublicUrl(path);
-    return this.action("uptime_set_avatar", { p_url: published.publicUrl });
+    const result = await this.action("uptime_set_avatar", { p_url: published.publicUrl });
+    // Only once the profile points at the new file: sweeping first would leave
+    // an account whose avatar_url names an object that is already gone if the
+    // RPC then refused. A refusal leaves the new upload orphaned instead, and
+    // the next successful change collects it.
+    if (result.ok) await this.sweepOldAvatars(uid, path);
+    return result;
+  }
+
+  /**
+   * Delete this account's earlier avatars.
+   *
+   * Each change writes a new object under the same folder and nothing used to
+   * remove the last one, so a user who tried four photos kept four files for
+   * good - and the only quota that noticed was the project's. Best-effort by
+   * design: the picture is already changed and saved by the time this runs, so
+   * a failed cleanup is a wasted object, not a failed action, and must not
+   * turn one into the other.
+   */
+  private async sweepOldAvatars(uid: string, keep: string): Promise<void> {
+    try {
+      const { data: files } = await this.client.storage.from("avatars").list(uid);
+      const stale = (files ?? [])
+        .map((entry) => `${uid}/${entry.name}`)
+        .filter((name) => name !== keep);
+      if (stale.length > 0) await this.client.storage.from("avatars").remove(stale);
+    } catch {
+      // See above: nothing the user did has failed.
+    }
   }
 
   async myRank(id: BoardId): Promise<RankInfo | null> {
@@ -294,18 +332,15 @@ export class SupabaseStore implements UptimeStore {
  * Formats the avatar bucket accepts, and the extension each one is stored as.
  *
  * Mirrors `allowed_mime_types` on the bucket in `0010_avatars_and_follow_direction.sql`.
- * Checked here as well so a wrong file is refused before it is uploaded rather
- * than after, which is the difference between an instant message and a wasted
- * round trip on a phone.
+ * Read against what `prepareAvatar` produced rather than against what the user
+ * picked: the encoder chooses between WebP and JPEG based on what this engine
+ * can actually write, so the output format is not known until it exists.
  */
 const EXTENSIONS: Record<string, string | undefined> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
 };
-
-/** Mirrors the bucket's own `file_size_limit`. */
-const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 function handleFor(userId: string, preferred: string): string {
   const stem = preferred.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 10) || "user";

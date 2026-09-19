@@ -9,7 +9,7 @@ export function Section({ title, children }: { title?: string; children: ReactNo
   return (
     <section className="mt-7">
       {title ? (
-        <h2 className="flex items-center gap-2.5 px-5 pb-2 text-[12px] font-semibold tracking-[0.1em] text-label-2 uppercase">
+        <h2 className="flex items-center gap-2.5 px-5 pb-2 text-overline text-label-2 uppercase">
           {title}
           {/* A rule running out from the label to the edge. The heading used to
               float above a full-width hairline that belonged to the rows below
@@ -66,11 +66,11 @@ export function Row({
         />
       ) : null}
       <div className="relative min-w-0 flex-1">
-        <div className="truncate text-[17px] text-label">{label}</div>
-        {sub ? <div className="mt-0.5 text-[13px] text-label-2">{sub}</div> : null}
+        <div className="truncate text-body text-label">{label}</div>
+        {sub ? <div className="mt-0.5 text-footnote text-label-2">{sub}</div> : null}
       </div>
       {value !== undefined ? (
-        <div className={`tnum relative shrink-0 text-[17px] ${valueColor}`}>{value}</div>
+        <div className={`tnum relative shrink-0 text-body ${valueColor}`}>{value}</div>
       ) : null}
       {trailing ? <div className="relative shrink-0">{trailing}</div> : null}
     </div>
@@ -137,7 +137,7 @@ export function Capsule({
 
   const shared = `${wide ? "flex-1" : ""} ${
     pressed ? "animate-confirm" : ""
-  } rounded-full px-6 py-3.5 text-[17px] font-semibold tracking-[-0.01em] transition-transform duration-150 active:scale-[0.97] disabled:scale-100 disabled:opacity-40`;
+  } rounded-full px-6 py-3.5 text-body font-semibold transition-transform duration-150 active:scale-[0.97] disabled:scale-100 disabled:opacity-40`;
 
   if (disabled) {
     return (

@@ -10,7 +10,7 @@ import {
   statusOf,
   type Seconds,
 } from "@/core";
-import { liveGiveable, type Snapshot } from "@/data/store";
+import { isRevivable, liveGiveable, type Snapshot } from "@/data/store";
 import { StopwatchFace } from "@/components/StopwatchFace";
 import { Capsule, Row, Section } from "@/components/List";
 import { LiveTime } from "@/components/LiveTime";
@@ -63,7 +63,7 @@ export function Home({
   // See Snapshot.windowAnchor for why.
   const windowLeft = Math.max(0, snapshot.windowAnchor + CHECK_IN_WINDOW - now);
   const windowFraction = Math.min(1, windowLeft / CHECK_IN_WINDOW);
-  const revivable = snapshot.friends.filter((f) => f.revive !== undefined).length;
+  const revivable = snapshot.friends.filter(isRevivable).length;
   const anonymous = snapshot.account.isAnonymous;
 
   // Recomputed against the ticking clock rather than read off the snapshot -
@@ -106,7 +106,7 @@ export function Home({
       </div>
 
       {!live && snapshot.lastRun?.reason === "lapsed" ? (
-        <p className="px-5 pt-4 text-[13px] text-label-2">
+        <p className="px-5 pt-4 text-footnote text-label-2">
           Your streak reset - the check-in window ran out. It ran{" "}
           {Math.floor(snapshot.lastRun.length / DAY)} days and is kept in your history.
         </p>
@@ -206,11 +206,11 @@ function GivePanel({
         />
 
         <div className="relative flex items-baseline justify-between">
-          <h2 className="text-[12px] font-semibold tracking-[0.1em] text-label-2 uppercase">
+          <h2 className="text-overline text-label-2 uppercase">
             To give
           </h2>
           {live ? (
-            <span className="flex items-center gap-1.5 text-[11px] font-medium text-bank">
+            <span className="flex items-center gap-1.5 text-micro font-medium text-bank">
               <span
                 aria-hidden="true"
                 className="animate-breathe h-1.5 w-1.5 rounded-full"
@@ -224,14 +224,14 @@ function GivePanel({
         <div className="relative mt-1.5">
           <LiveTime
             seconds={giveable}
-            className="tnum text-[40px] leading-none font-light tracking-[-0.03em]"
+            className="tnum text-display"
             // Zero is not an amount of time to give, so it does not get the
             // colour that means one. Green nothing reads as a system error.
             style={{ color: giveable > 0 ? "var(--color-bank)" : "var(--color-label-3)" }}
           />
         </div>
 
-        <p className="relative mt-2 text-[13px] text-label-2">
+        <p className="relative mt-2 text-footnote text-label-2">
           {live
             ? `Grows by ${perHour} for every hour your clock keeps running. Giving it away never shortens your own streak.`
             : `A tenth of the time you keep. Start the clock and it grows by ${perHour} an hour.`}
@@ -253,7 +253,7 @@ function GivePanel({
         <button
           type="button"
           onClick={onOpenAccount}
-          className="mt-3 block w-full text-left text-[13px] text-label-2"
+          className="mt-3 block w-full text-left text-footnote text-label-2"
         >
           Sending time needs an account. <span className="text-run">Create one</span> - your streak
           carries over.

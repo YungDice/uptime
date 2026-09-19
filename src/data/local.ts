@@ -24,6 +24,7 @@ import {
   type StreakRun,
   type UserState,
 } from "@/core";
+import { prepareAvatar, toDataUrl } from "./image";
 import type {
   ActionResult,
   FriendView,
@@ -34,9 +35,6 @@ import type {
 } from "./store";
 
 const STORAGE_KEY = "uptime.world.v2";
-
-/** Mirrors the avatar bucket's allowed_mime_types. */
-const AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 interface LocalAccount {
   /** Keyed by user id. Absent means that account is still anonymous. */
@@ -412,7 +410,8 @@ export class LocalStore implements UptimeStore {
    * nowhere to put a file except the same browser storage everything else
    * lives in. That caps the useful size well below the bucket's own limit -
    * localStorage is a few megabytes for the entire world, not per image - so
-   * a write that does not fit is reported rather than left to throw.
+   * the photo is shrunk to the same square the server adapter stores before it
+   * is encoded at all, and a write that still does not fit is reported.
    */
   async setAvatar(file: File | null): Promise<ActionResult> {
     this.syncFromStorage();
@@ -424,21 +423,25 @@ export class LocalStore implements UptimeStore {
       return { ok: true, snapshot: this.snapshot(), message: "Photo removed." };
     }
 
-    if (!AVATAR_TYPES.includes(file.type)) {
-      return { ok: false, message: "Use a JPEG, PNG or WebP image." };
+    let encoded: string;
+    try {
+      encoded = await toDataUrl(await prepareAvatar(file));
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : "That image did not work." };
     }
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
     const previous = me.avatarUrl;
-    me.avatarUrl = `data:${file.type};base64,${btoa(binary)}`;
+    me.avatarUrl = encoded;
 
-    try {
-      this.persist();
-    } catch {
+    // Asked, not caught. `persist` swallows its own exception on purpose - the
+    // session keeps working in memory when storage is unavailable - so the
+    // try/catch that used to be here could never fire. An oversized photo
+    // therefore reported "Photo updated.", and then vanished at the next
+    // action, because `syncFromStorage` reloads the world that was never
+    // written. Reverting needs the answer, so `persist` has to return one.
+    if (!this.persist()) {
       me.avatarUrl = previous;
-      return { ok: false, message: "That image is too large to keep on this device." };
+      return { ok: false, message: "There is no room left to store a photo on this device." };
     }
 
     return { ok: true, snapshot: this.snapshot(), message: "Photo updated." };
@@ -671,11 +674,16 @@ export class LocalStore implements UptimeStore {
     return world;
   }
 
-  private persist(): void {
+  /** True when the world reached storage. See the note in `setAvatar`. */
+  private persist(): boolean {
     try {
       this.storage?.setItem(STORAGE_KEY, JSON.stringify(this.world));
+      return true;
     } catch {
-      // Private mode or a full quota. The session still works in memory.
+      // Private mode or a full quota. The session still works in memory, so
+      // this is not thrown - but a caller that can undo its own change wants
+      // to know, rather than reporting a success that will not survive.
+      return false;
     }
   }
 

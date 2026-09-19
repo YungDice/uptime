@@ -123,13 +123,13 @@ function Step({
             quietly outrank the person above it. */}
         <span className="mt-2 flex h-[42px] w-full flex-col justify-start">
           <span
-            className={`w-full truncate text-center text-[13px] font-semibold ${
+            className={`w-full truncate text-center text-footnote font-semibold ${
               isMe ? "text-run" : "text-label"
             }`}
           >
             {entry.displayName}
           </span>
-          <span className="tnum w-full truncate text-center text-[13px] text-label-2">
+          <span className="tnum w-full truncate text-center text-footnote text-label-2">
             {entry.unit === "count" ? entry.value : formatDuration(entry.value)}
           </span>
         </span>
@@ -146,7 +146,7 @@ function Step({
         >
           <span
             aria-hidden="true"
-            className="tnum text-[22px] font-bold"
+            className="tnum text-numeral"
             style={{ color: metal }}
           >
             {place}

@@ -52,7 +52,7 @@ export function People({
     <div className="pb-4">
       <form onSubmit={submit} className="flex gap-2 px-5 pt-3">
         <div className="surface relative flex min-w-0 flex-1 items-center rounded-xl">
-          <span aria-hidden="true" className="pl-3.5 text-[17px] text-label-3">
+          <span aria-hidden="true" className="pl-3.5 text-body text-label-3">
             @
           </span>
           <input
@@ -63,13 +63,13 @@ export function People({
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent py-2.5 pr-3.5 pl-1 text-[17px] text-label placeholder:text-label-3 focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent py-2.5 pr-3.5 pl-1 text-body text-label placeholder:text-label-3 focus:outline-none"
           />
         </div>
         <button
           type="submit"
           disabled={nickname.trim().length === 0}
-          className="surface-tint rounded-xl px-4 py-2.5 text-[17px] font-semibold transition-transform active:scale-95 disabled:opacity-35"
+          className="surface-tint rounded-xl px-4 py-2.5 text-body font-semibold transition-transform active:scale-95 disabled:opacity-35"
           style={{ color: "var(--color-run)", ["--tint" as string]: "var(--color-run)" }}
         >
           Follow
@@ -80,7 +80,7 @@ export function People({
         <button
           type="button"
           onClick={onOpenAccount}
-          className="mt-4 block w-full px-5 text-left text-[13px] text-label-2"
+          className="mt-4 block w-full px-5 text-left text-footnote text-label-2"
         >
           You can follow people without an account, but sending time needs one.{" "}
           <span className="text-run">Create one</span> - your streak carries over.
@@ -101,10 +101,10 @@ export function People({
               >
                 <Avatar profile={friend.profile} size={42} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[17px] text-label">
+                  <span className="block truncate text-body text-label">
                     {friend.profile.displayName}
                   </span>
-                  <span className="block truncate text-[13px] text-label-2">
+                  <span className="block truncate text-footnote text-label-2">
                     @{friend.profile.handle} follows you
                   </span>
                 </span>
@@ -112,14 +112,14 @@ export function People({
               <button
                 type="button"
                 onClick={() => onFollow(friend.profile.handle)}
-                className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-transform active:scale-95"
+                className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-footnote font-semibold transition-transform active:scale-95"
                 style={{ color: "var(--color-run)", ["--tint" as string]: "var(--color-run)" }}
               >
                 Follow back
               </button>
             </div>
           ))}
-          <p className="px-5 pt-2.5 text-[13px] text-label-2">
+          <p className="px-5 pt-2.5 text-footnote text-label-2">
             Following back makes it mutual, which is what lets time move between you.
           </p>
         </Section>

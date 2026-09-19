@@ -37,15 +37,15 @@ export function ReminderOffer({
 
   return (
     <div className="animate-rise mx-5 mt-6 rounded-2xl bg-raise px-4 py-4">
-      <p className="text-[15px] text-label">Want a reminder before your window closes?</p>
-      <p className="mt-1 text-[13px] text-label-2">
+      <p className="text-callout text-label">Want a reminder before your window closes?</p>
+      <p className="mt-1 text-footnote text-label-2">
         One notification, with a button that checks you in without opening the app.
       </p>
       <div className="mt-3 flex gap-2">
         <button
           type="button"
           onClick={() => void requestPermission().then(setPermission)}
-          className="rounded-full px-3.5 py-2 text-[13px] font-medium"
+          className="rounded-full px-3.5 py-2 text-footnote font-medium"
           style={{
             color: "var(--color-run)",
             background: "color-mix(in srgb, var(--color-run) 18%, transparent)",
@@ -56,7 +56,7 @@ export function ReminderOffer({
         <button
           type="button"
           onClick={() => setDismissed(true)}
-          className="rounded-full px-3.5 py-2 text-[13px] font-medium text-label-2"
+          className="rounded-full px-3.5 py-2 text-footnote font-medium text-label-2"
         >
           Not now
         </button>

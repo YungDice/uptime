@@ -2,10 +2,17 @@
 
 /* Uptime wears the iPhone Clock's grammar, because the thing this product is
    about IS that screen: a stopwatch somebody started and never stopped.
-   True black, light numerals with tabular figures, hairline separators, and
-   colour used only where it names a system. */
+   A near-black page, light numerals with tabular figures, hairline separators,
+   and colour used only where it names a system. */
 @theme {
-  --color-void: #000000;
+  /* The page.
+
+     Not pure black. The sheets are a grey that lifts off the page, and against
+     a true-black background that lift read as a jolt rather than as depth -
+     opening a sheet changed the whole screen's material, not just its top
+     layer. Raised far enough to feel like the same family as the sheet and not
+     so far that the Clock app's character goes with it. */
+  --color-page: #0c0c0e;
   --color-raise: #1c1c1e;
   --color-raise-2: #2c2c2e;
   --color-hairline: #38383a;
@@ -24,6 +31,83 @@
   --color-lapse: #ff453a;
 
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* The type scale.
+
+     Every size in this app used to be written at the call site as an arbitrary
+     pixel value, and the result was that a role drifted between screens rather
+     than being decided once: the ticking readout was 46px on a profile, 42px
+     in the send sheet and 40px on the home panel; a sheet heading was 24px,
+     22px or 20px depending on which sheet; and the same all-caps label was
+     11px at 0.14em, 11px at 0.04em and 12px at 0.1em. None of those
+     differences meant anything - they are too small to read as intent and just
+     large enough to read as carelessness, which is what "the font keeps
+     changing" actually is.
+
+     Each step carries its own line-height, tracking and weight, so the whole
+     typographic decision travels as one token. That is the part that stops the
+     drift coming back: a call site cannot take the size and then re-lift the
+     weight, because it never needed to name either separately. Where a step
+     fixes a weight, the call site does not also set one. */
+
+  /* The ticking readouts - the stopwatch, the amount being sent, a profile's
+     counter. One size, because they are one thing seen in three places. */
+  --text-display: 44px;
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: -0.03em;
+  --text-display--font-weight: 300;
+
+  /* The large title at the top of a screen. */
+  --text-screen: 34px;
+  --text-screen--line-height: 1.05;
+  --text-screen--letter-spacing: -0.02em;
+  --text-screen--font-weight: 700;
+
+  /* Every heading below that: a sheet's title, a person's name. */
+  --text-title: 22px;
+  --text-title--line-height: 1.2;
+  --text-title--letter-spacing: -0.01em;
+  --text-title--font-weight: 600;
+
+  /* A numeral that is an object rather than a measurement - the figure struck
+     into a podium block. Same size as a title and deliberately not the same
+     token: it is bold, untracked, and it would follow a title's tracking into
+     nonsense if it shared one. */
+  --text-numeral: 22px;
+  --text-numeral--line-height: 1;
+  --text-numeral--font-weight: 700;
+
+  /* Row labels and row values. */
+  --text-body: 17px;
+  --text-body--line-height: 1.3;
+
+  /* Secondary lines and explanatory paragraphs. */
+  --text-callout: 15px;
+  --text-callout--line-height: 1.45;
+
+  /* Captions under a control, and most supporting text. */
+  --text-footnote: 13px;
+  --text-footnote--line-height: 1.35;
+
+  /* Handles, chips, and anything in a grid cell. */
+  --text-caption: 12px;
+  --text-caption--line-height: 1.3;
+
+  /* The smallest readable step, for text inside a tight grid. */
+  --text-micro: 11px;
+  --text-micro--line-height: 1.25;
+
+  /* All-caps section labels: RECORD, RUNNING, TO GIVE, RANK. */
+  --text-overline: 11px;
+  --text-overline--line-height: 1;
+  --text-overline--letter-spacing: 0.14em;
+  --text-overline--font-weight: 600;
+
+  /* The tab bar, which is its own thing and the only 10px in the app. */
+  --text-tab: 10px;
+  --text-tab--line-height: 1;
+  --text-tab--letter-spacing: 0.01em;
+  --text-tab--font-weight: 500;
 }
 
 :root {
@@ -31,6 +115,21 @@
   /* Browser surfaces belong to the design too. */
   accent-color: var(--color-run);
   caret-color: var(--color-run);
+
+  /* True black, which is now a separator rather than a background.
+
+     It survives as its own token because two things still want real black and
+     neither is the page: the gap punched between an avatar and its ring, and
+     the scrim a sheet lays over whatever it covers. Both are asking for "the
+     absence of the surface", which is not the same request as "the colour the
+     page happens to be" - and now that the page is no longer black, writing
+     one for the other would silently change both the next time the page moves.
+
+     Declared here rather than in `@theme` for the same reason as the metals
+     below: nothing uses a `bg-void` utility any more, so Tailwind would see an
+     unused theme variable and drop it - taking a box-shadow and a scrim with
+     it, with no error to say why. */
+  --color-void: #000000;
 
   /* Metals. The one addition to the palette, and it earns its place the same
      way the other three do: a place on a podium and a tier on a medal are
@@ -77,7 +176,7 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-void);
+  background: var(--color-page);
   color: var(--color-label);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

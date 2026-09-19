@@ -28,7 +28,7 @@ interface Props {
 export function FriendList({ friends, giveable, now, onSend, onRevive, onOpen, trailingTo }: Props) {
   if (friends.length === 0) {
     return (
-      <p className="px-5 py-10 text-center text-[15px] text-label-2">
+      <p className="px-5 py-10 text-center text-callout text-label-2">
         Nobody here yet. Follow someone by nickname above - time only moves between people who
         follow each other.
       </p>
@@ -103,7 +103,7 @@ function FriendRow({
       type="button"
       onClick={onSend}
       disabled={!canGive}
-      className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-transform active:scale-95 disabled:opacity-35"
+      className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-footnote font-semibold transition-transform active:scale-95 disabled:opacity-35"
       style={{ color: "var(--color-bank)", ["--tint" as string]: "var(--color-bank)" }}
     >
       Send
@@ -139,23 +139,23 @@ function FriendRow({
             ring={live ? "run" : friend.revive ? "lapse" : undefined}
           />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[17px] text-label">
+            <span className="block truncate text-body text-label">
               {friend.profile.displayName}
             </span>
-            <span className="mt-0.5 block truncate text-[13px] text-label-2">
+            <span className="mt-0.5 block truncate text-footnote text-label-2">
               @{friend.profile.handle}
             </span>
           </span>
           <span className="tnum shrink-0 text-right">
             {live ? (
               <span className="flex items-baseline gap-1.5">
-                <span className="text-[17px] text-label">{days}d</span>
-                <span className="text-[15px] text-label-2">{clock}</span>
+                <span className="text-body text-label">{days}d</span>
+                <span className="text-callout text-label-2">{clock}</span>
               </span>
             ) : friend.revive ? (
-              <span className="text-[15px] text-lapse">Broken</span>
+              <span className="text-callout text-lapse">Broken</span>
             ) : (
-              <span className="text-[15px] text-label-3">Stopped</span>
+              <span className="text-callout text-label-3">Stopped</span>
             )}
           </span>
         </button>
@@ -168,13 +168,13 @@ function FriendRow({
           two controls cannot sit on one line without the name wrapping. */}
       {stacked ? (
         <div className="hairline relative flex items-center gap-2 pr-5 pb-3">
-          <p className="flex-1 text-[13px] text-label-2">{note}</p>
+          <p className="flex-1 text-footnote text-label-2">{note}</p>
           {friend.revive ? (
             <button
               type="button"
               onClick={onRevive}
               disabled={!canAfford || !friend.connected}
-              className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-transform active:scale-95 disabled:opacity-35"
+              className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-footnote font-semibold transition-transform active:scale-95 disabled:opacity-35"
               style={{ color: "var(--color-run)", ["--tint" as string]: "var(--color-run)" }}
             >
               Revive {formatDuration(friend.revive.cost)}

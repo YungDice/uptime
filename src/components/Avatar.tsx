@@ -31,12 +31,21 @@ export function Avatar({
 }) {
   // A broken URL is not a missing one - a deleted storage object would
   // otherwise leave a permanently empty hole where a face should be.
-  const [failed, setFailed] = useState(false);
+  //
+  // The *URL* that failed, rather than a boolean. A boolean latches: once an
+  // image had failed, this instance showed a monogram for the rest of the
+  // session however many times the picture changed, so the first thing a user
+  // did after a failure - pick a different photo - was also the one thing that
+  // could not visibly work. Worse in a list, where React keeps an instance and
+  // swaps whose row it is: one broken face would follow that position down the
+  // board and blank out whoever scrolled into it next. Keyed by URL, the
+  // failure applies to the image that actually failed and to nothing else.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   // Tested for being a non-empty string rather than for not being null: a
   // world persisted before this field existed has no property here at all, and
   // `undefined !== null` would send an undefined straight into `.length`.
   const url = profile.avatarUrl;
-  const showImage = typeof url === "string" && url.length > 0 && !failed;
+  const showImage = typeof url === "string" && url.length > 0 && url !== failedUrl;
 
   const ringColor =
     ring === undefined
@@ -62,6 +71,7 @@ export function Avatar({
     >
       {showImage ? (
         <img
+          key={url}
           src={url}
           alt=""
           width={size}
@@ -72,7 +82,11 @@ export function Avatar({
           // nothing for a referrer to authorise and nothing gained by leaking
           // which screen of which app requested a face.
           referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
+          // `url` is narrowed to a string by `showImage`, and is the value
+          // this element was rendered with - not whatever is current when the
+          // error arrives - so a late failure from a replaced image cannot
+          // blank out the one that replaced it.
+          onError={() => setFailedUrl(url)}
           className="h-full w-full object-cover"
         />
       ) : (
