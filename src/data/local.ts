@@ -24,12 +24,30 @@ import {
   type StreakRun,
   type UserState,
 } from "@/core";
-import type { ActionResult, FriendView, Snapshot, UptimeStore } from "./store";
+import type {
+  ActionResult,
+  FriendView,
+  PublicProfile,
+  RankInfo,
+  Snapshot,
+  UptimeStore,
+} from "./store";
 
 const STORAGE_KEY = "uptime.world.v2";
 
+/** Mirrors the avatar bucket's allowed_mime_types. */
+const AVATAR_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+interface LocalAccount {
+  /** Keyed by user id. Absent means that account is still anonymous. */
+  email: string;
+  password: string;
+}
+
 interface World {
   meId: string;
+  /** Credentials, so the account flow is exercisable without a backend. */
+  accounts?: Record<string, LocalAccount>;
   users: Record<string, UserState>;
   gifts: Gift[];
   /**
@@ -66,7 +84,7 @@ export class LocalStore implements UptimeStore {
     this.world = this.load();
   }
 
-  async signIn(handle: string): Promise<Snapshot> {
+  async start(handle: string): Promise<Snapshot> {
     const now = this.clock.now();
     this.syncFromStorage();
     const existing = Object.values(this.world.users).find((u) => u.handle === handle);
@@ -78,6 +96,7 @@ export class LocalStore implements UptimeStore {
         id: "u_" + Math.random().toString(36).slice(2, 10),
         handle,
         displayName: handle,
+        avatarUrl: null,
         createdAt: now,
         streak: startRun(now),
         lifetimeSeconds: 0,
@@ -174,6 +193,13 @@ export class LocalStore implements UptimeStore {
     const recipient = this.world.users[toUserId];
     if (!recipient) return { ok: false, message: "That account no longer exists." };
 
+    if (this.isAnonymous(me.id)) {
+      return {
+        ok: false,
+        message: "Create an account to send time. Your streak carries over.",
+      };
+    }
+
     const check = checkGift(amount, {
       senderBalance: this.balanceOf(me, now),
       sentInLastDay: sentInLastDay(this.world.gifts, me.id, now),
@@ -206,6 +232,13 @@ export class LocalStore implements UptimeStore {
     this.syncFromStorage();
     this.sweep(now);
     const me = this.me();
+    if (this.isAnonymous(me.id)) {
+      return {
+        ok: false,
+        message: "Create an account to revive a friend. Your streak carries over.",
+      };
+    }
+
     const friend = this.world.users[userId];
     if (!friend) return { ok: false, message: "That account no longer exists." };
     if (!this.connected(me.id, userId)) {
@@ -248,6 +281,98 @@ export class LocalStore implements UptimeStore {
     };
   }
 
+  async signUp(email: string, password: string, handle: string): Promise<ActionResult> {
+    this.syncFromStorage();
+    const trimmed = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+      return { ok: false, message: "That does not look like an email address." };
+    }
+    if (password.length < 8) {
+      return { ok: false, message: "Passwords need at least 8 characters." };
+    }
+    if (Object.values(this.world.accounts ?? {}).some((a) => a.email === trimmed)) {
+      return { ok: false, message: "An account with that email already exists." };
+    }
+
+    const named = await this.setHandle(handle);
+    if (!named.ok) return named;
+
+    // Read the world again after setHandle: it re-syncs from storage, so a
+    // reference taken before it would be writing to an orphaned object.
+    const accounts = (this.world.accounts ??= {});
+    accounts[this.me().id] = { email: trimmed, password };
+    this.persist();
+
+    return {
+      ok: true,
+      snapshot: this.snapshot(),
+      message: "Account created. Your streak carried over.",
+    };
+  }
+
+  async signIn(email: string, password: string): Promise<ActionResult> {
+    this.syncFromStorage();
+    const accounts = this.world.accounts ?? {};
+    const trimmed = email.trim().toLowerCase();
+    const entry = Object.entries(accounts).find(
+      ([, a]) => a.email === trimmed && a.password === password,
+    );
+    if (!entry) return { ok: false, message: "Wrong email or password." };
+
+    this.world.meId = entry[0];
+    this.persist();
+    return { ok: true, snapshot: this.snapshot(), message: "Signed in." };
+  }
+
+  async signOut(): Promise<ActionResult> {
+    this.syncFromStorage();
+    // Drops to a fresh anonymous account rather than a dead screen.
+    const now = this.clock.now();
+    const user: UserState = {
+      id: "u_" + Math.random().toString(36).slice(2, 10),
+      handle: "guest_" + Math.random().toString(36).slice(2, 8),
+      displayName: "You",
+      avatarUrl: null,
+      createdAt: now,
+      streak: startRun(now),
+      lifetimeSeconds: 0,
+      history: [],
+    };
+    this.world.users[user.id] = user;
+    this.world.meId = user.id;
+    this.persist();
+    return { ok: true, snapshot: this.snapshot(), message: "Signed out." };
+  }
+
+  async setHandle(handle: string): Promise<ActionResult> {
+    this.syncFromStorage();
+    const wanted = handle.trim().toLowerCase();
+    if (!/^[a-z0-9_]{2,24}$/.test(wanted)) {
+      return {
+        ok: false,
+        message: "Nicknames are 2-24 characters, using letters, numbers and underscores.",
+      };
+    }
+    const me = this.me();
+    if (Object.values(this.world.users).some((u) => u.handle === wanted && u.id !== me.id)) {
+      return { ok: false, message: "That nickname is taken." };
+    }
+    me.handle = wanted;
+    this.persist();
+    return { ok: true, snapshot: this.snapshot(), message: "Nickname updated." };
+  }
+
+  async setDisplayName(name: string): Promise<ActionResult> {
+    this.syncFromStorage();
+    const wanted = name.trim();
+    if (wanted.length < 1 || wanted.length > 40) {
+      return { ok: false, message: "Pick a name between 1 and 40 characters." };
+    }
+    this.me().displayName = wanted;
+    this.persist();
+    return { ok: true, snapshot: this.snapshot(), message: "Name updated." };
+  }
+
   async follow(handle: string): Promise<ActionResult> {
     const now = this.clock.now();
     this.syncFromStorage();
@@ -255,7 +380,7 @@ export class LocalStore implements UptimeStore {
     const wanted = handle.trim().toLowerCase();
     const target = Object.values(this.world.users).find((u) => u.handle === wanted);
 
-    if (!target) return { ok: false, message: "No account with that handle." };
+    if (!target) return { ok: false, message: "No account with that nickname." };
     if (target.id === me.id) return { ok: false, message: "That is you." };
 
     const key = followKey(me.id, target.id);
@@ -280,11 +405,112 @@ export class LocalStore implements UptimeStore {
     return { ok: true, snapshot: this.snapshot(), message: "Unfollowed." };
   }
 
+  /**
+   * Inlined as a data URL rather than uploaded anywhere.
+   *
+   * The whole point of this adapter is that it needs no backend, so there is
+   * nowhere to put a file except the same browser storage everything else
+   * lives in. That caps the useful size well below the bucket's own limit -
+   * localStorage is a few megabytes for the entire world, not per image - so
+   * a write that does not fit is reported rather than left to throw.
+   */
+  async setAvatar(file: File | null): Promise<ActionResult> {
+    this.syncFromStorage();
+    const me = this.me();
+
+    if (file === null) {
+      me.avatarUrl = null;
+      this.persist();
+      return { ok: true, snapshot: this.snapshot(), message: "Photo removed." };
+    }
+
+    if (!AVATAR_TYPES.includes(file.type)) {
+      return { ok: false, message: "Use a JPEG, PNG or WebP image." };
+    }
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    const previous = me.avatarUrl;
+    me.avatarUrl = `data:${file.type};base64,${btoa(binary)}`;
+
+    try {
+      this.persist();
+    } catch {
+      me.avatarUrl = previous;
+      return { ok: false, message: "That image is too large to keep on this device." };
+    }
+
+    return { ok: true, snapshot: this.snapshot(), message: "Photo updated." };
+  }
+
+  async myRank(id: BoardId): Promise<RankInfo | null> {
+    const now = this.clock.now();
+    this.syncFromStorage();
+    this.sweep(now);
+    const users = Object.values(this.world.users).map((u) => ({
+      ...u,
+      isAnonymous: this.isAnonymous(u.id),
+    }));
+    // The whole board, not the top slice: a placing of 40th cannot be read off
+    // a list of 20, and that is exactly the placing worth showing someone.
+    const rows = buildBoard(id, users, this.world.gifts, now, Number.MAX_SAFE_INTEGER);
+    const mine = rows.find((row) => row.userId === this.world.meId);
+    if (mine === undefined) return null;
+
+    // Ties share a position, matching SQL's rank().
+    const position = rows.findIndex((row) => row.value === mine.value) + 1;
+    return { board: id, position, of: rows.length, value: mine.value };
+  }
+
+  async profile(userId: string): Promise<PublicProfile | null> {
+    const now = this.clock.now();
+    this.syncFromStorage();
+    this.sweep(now);
+    const them = this.world.users[userId];
+    if (!them) return null;
+
+    const me = this.me();
+    const lastRun = revivableRun(them);
+    const status = statusOf(them.streak, now);
+
+    const view: PublicProfile = {
+      profile: them,
+      streak: them.streak,
+      lifetimeSeconds: them.lifetimeSeconds,
+      personalBest: Math.max(
+        isRunning(status) ? status.elapsed : 0,
+        ...them.history.map((r) => r.length),
+        0,
+      ),
+      totalSent: totalSent(this.world.gifts, them.id),
+      totalReceived: totalReceived(this.world.gifts, them.id),
+      rescues: this.world.gifts.filter(
+        (g) => g.fromUserId === them.id && g.revivedStreakId !== undefined,
+      ).length,
+      connected: this.connected(me.id, them.id),
+      iFollow: this.world.follows.includes(followKey(me.id, them.id)),
+      followsMe: this.world.follows.includes(followKey(them.id, me.id)),
+    };
+    if (them.streak.streakStart === null && lastRun) {
+      view.revive = {
+        lostLength: lastRun.length,
+        restores: revivedLength(lastRun.length),
+        cost: reviveCost(lastRun.length),
+      };
+    }
+    return view;
+  }
+
   async board(id: BoardId): Promise<BoardEntry[]> {
     const now = this.clock.now();
     this.syncFromStorage();
     this.sweep(now);
-    return buildBoard(id, Object.values(this.world.users), this.world.gifts, now);
+    const users = Object.values(this.world.users).map((u) => ({
+      ...u,
+      isAnonymous: this.isAnonymous(u.id),
+    }));
+    return buildBoard(id, users, this.world.gifts, now);
   }
 
   // --- internals -----------------------------------------------------------
@@ -322,6 +548,10 @@ export class LocalStore implements UptimeStore {
   }
 
   /** The gate on every gift: both directions must exist. */
+  private isAnonymous(userId: string): boolean {
+    return this.world.accounts?.[userId] === undefined;
+  }
+
   private connected(a: string, b: string): boolean {
     return (
       this.world.follows.includes(followKey(a, b)) && this.world.follows.includes(followKey(b, a))
@@ -377,6 +607,8 @@ export class LocalStore implements UptimeStore {
           profile: friend,
           streak: friend.streak,
           connected: this.connected(me.id, friend.id),
+          iFollow: this.world.follows.includes(followKey(me.id, friend.id)),
+          followsMe: this.world.follows.includes(followKey(friend.id, me.id)),
         };
         if (friend.streak.streakStart === null && lastRun) {
           view.revive = {
@@ -390,6 +622,10 @@ export class LocalStore implements UptimeStore {
       .sort((a, b) => elapsedOf(b.streak, now) - elapsedOf(a.streak, now));
 
     return {
+      account: {
+        isAnonymous: this.isAnonymous(me.id),
+        email: this.world.accounts?.[me.id]?.email ?? null,
+      },
       me,
       status,
       serverNow: now,
@@ -416,7 +652,15 @@ export class LocalStore implements UptimeStore {
     const raw = this.storage?.getItem(STORAGE_KEY);
     if (raw) {
       try {
-        return JSON.parse(raw) as World;
+        const world = JSON.parse(raw) as World;
+        // Worlds written before avatars existed have no such property, and the
+        // type says the field is always there. Filling it in on read is what
+        // lets the rest of the code trust that, without bumping the storage
+        // key and throwing away somebody's real streak over a cosmetic column.
+        for (const user of Object.values(world.users)) {
+          if (user.avatarUrl === undefined) user.avatarUrl = null;
+        }
+        return world;
       } catch {
         // Corrupt payload: start over rather than trapping the user.
       }
@@ -497,7 +741,13 @@ const SEED_CAST: SeedMember[] = [
   { id: "u_jules", handle: "jules", name: "Jules", ageDays: 400, startDaysAgo: null, startOffset: 0, lastSeenDaysAgo: 70, lifetimeDays: 210, history: [{ lengthDays: 210, endedDaysAgo: 10, reason: "lapsed" }] },
   { id: "u_ren", handle: "ren", name: "Ren", ageDays: 90, startDaysAgo: 31, startOffset: 33117, lastSeenDaysAgo: 2, lifetimeDays: 18, history: [{ lengthDays: 18, endedDaysAgo: 40, reason: "voluntary" }] },
   { id: "u_sol", handle: "sol", name: "Sol", ageDays: 220, startDaysAgo: null, startOffset: 0, lastSeenDaysAgo: 65, lifetimeDays: 340, history: [{ lengthDays: 340, endedDaysAgo: 5, reason: "lapsed" }] },
+  // Follows you and is not followed back - the one state the all-pairs graph
+  // below deliberately leaves out, so the requests section has something in it.
+  { id: "u_ivo", handle: "ivo", name: "Ivo", ageDays: 60, startDaysAgo: 12, startOffset: 4821, lastSeenDaysAgo: 0, lifetimeDays: 4, history: [] },
 ];
+
+/** Who has not been followed back, so the incoming-request branch is reachable. */
+const SEED_UNANSWERED = "u_ivo";
 
 function seedWorld(now: Seconds): World {
   const users: Record<string, UserState> = {};
@@ -507,6 +757,7 @@ function seedWorld(now: Seconds): World {
       id: member.id,
       handle: member.handle,
       displayName: member.name,
+      avatarUrl: null,
       createdAt: now - member.ageDays * DAY,
       streak: {
         streakStart:
@@ -529,7 +780,12 @@ function seedWorld(now: Seconds): World {
   const follows: string[] = [];
   for (const a of ids) {
     for (const b of ids) {
-      if (a !== b) follows.push(followKey(a, b));
+      if (a === b) continue;
+      // Everyone follows everyone, except that nobody has followed Ivo back.
+      // A cast in which every follow is already mutual can never show a
+      // pending request, and that is a whole screen of the app.
+      if (b === SEED_UNANSWERED) continue;
+      follows.push(followKey(a, b));
     }
   }
 
@@ -538,5 +794,10 @@ function seedWorld(now: Seconds): World {
     { id: "g_seed_2", fromUserId: "u_ren", toUserId: "u_tobi", amount: 6 * 3600, createdAt: now - 9 * DAY },
   ];
 
-  return { meId: ids[0]!, users, gifts, follows };
+  const accounts: Record<string, LocalAccount> = {};
+  for (const member of SEED_CAST) {
+    accounts[member.id] = { email: member.handle + "@example.com", password: "uptime-demo" };
+  }
+
+  return { meId: ids[0]!, users, gifts, follows, accounts };
 }

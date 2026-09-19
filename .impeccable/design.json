@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-19T00:00:00Z",
+  "title": "Design System: Uptime",
+  "extensions": {
+    "colorMeta": {
+      "void": {
+        "role": "neutral",
+        "displayName": "Void",
+        "canonical": "#000000",
+        "tonalRamp": ["#000000", "#0d0d0e", "#1c1c1e", "#2c2c2e", "#38383a", "#5a5a5e", "#8e8e93", "#f2f2f7"]
+      },
+      "raise": {
+        "role": "neutral",
+        "displayName": "Raise",
+        "canonical": "#1c1c1e",
+        "tonalRamp": ["#000000", "#121214", "#1c1c1e", "#2c2c2e", "#3a3a3c", "#636366", "#aeaeb2", "#f2f2f7"]
+      },
+      "raise-2": {
+        "role": "neutral",
+        "displayName": "Raise 2",
+        "canonical": "#2c2c2e",
+        "tonalRamp": ["#0a0a0b", "#1c1c1e", "#2c2c2e", "#3a3a3c", "#48484a", "#6c6c70", "#aeaeb2", "#f2f2f7"]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#38383a",
+        "tonalRamp": ["#141416", "#222224", "#2c2c2e", "#38383a", "#48484a", "#6c6c70", "#9a9aa0", "#e5e5ea"]
+      },
+      "label": {
+        "role": "neutral",
+        "displayName": "Label",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#2c2c2e", "#48484a", "#6c6c70", "#8e8e93", "#aeaeb2", "#c7c7cc", "#e5e5ea", "#ffffff"]
+      },
+      "label-2": {
+        "role": "neutral",
+        "displayName": "Label 2",
+        "canonical": "#8e8e93",
+        "tonalRamp": ["#1c1c1e", "#2c2c2e", "#48484a", "#6c6c70", "#8e8e93", "#aeaeb2", "#c7c7cc", "#e5e5ea"]
+      },
+      "label-3": {
+        "role": "neutral",
+        "displayName": "Label 3",
+        "canonical": "#7c7c82",
+        "tonalRamp": ["#1a1a1c", "#29292c", "#434347", "#5d5d62", "#7c7c82", "#9b9ba1", "#bcbcc1", "#dedee2"]
+      },
+      "run": {
+        "role": "primary",
+        "displayName": "Clock Orange",
+        "canonical": "#ff9f0a",
+        "tonalRamp": ["#3d2400", "#5c3600", "#8a5100", "#b86c00", "#e58800", "#ff9f0a", "#ffbe5c", "#ffdfad"]
+      },
+      "bank": {
+        "role": "secondary",
+        "displayName": "Banked Green",
+        "canonical": "#30d158",
+        "tonalRamp": ["#08300f", "#0d4b18", "#137024", "#1a9531", "#22b942", "#30d158", "#6fe38c", "#b4f2c4"]
+      },
+      "lapse": {
+        "role": "tertiary",
+        "displayName": "Lapse Red",
+        "canonical": "#ff453a",
+        "tonalRamp": ["#3d0a06", "#5c100b", "#8a1811", "#b82018", "#e52e23", "#ff453a", "#ff8078", "#ffc0bc"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The day count at the centre of the ring. 76px light tabular; 68px in the idle state. Nothing else uses this size." },
+      "headline": { "displayName": "Large Title", "purpose": "Screen title in the scroll header; fades out as it collapses into the compact bar." },
+      "readout": { "displayName": "Stopwatch Readout", "purpose": "HH:MM:SS with hundredths beneath the day count. Hundredths in Label 2." },
+      "title": { "displayName": "Sheet Title", "purpose": "Headings inside the rising sheet." },
+      "body": { "displayName": "Body", "purpose": "Row labels and values, capsule labels, input text, compact-bar title at 600." },
+      "body-secondary": { "displayName": "Body Secondary", "purpose": "Explanatory paragraphs, empty states, segmented-control labels." },
+      "caption": { "displayName": "Caption", "purpose": "Row sub-lines, hints, small pill buttons, the window label." },
+      "section-header": { "displayName": "Section Header", "purpose": "Uppercase grouped-list header above a section's leading rule." },
+      "tab-label": { "displayName": "Tab Label", "purpose": "The tab bar only." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "ease-out-expo", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "The only easing curve in the build. Used by confirm, handoff, rise, and the ring's stroke-dashoffset transition." },
+      { "name": "confirm", "value": "confirm 420ms cubic-bezier(0.16, 1, 0.3, 1) — scale 1 → 0.965 at 36% → 1", "purpose": "The check-in press. The only gesture on the only action the system cannot do for the user." },
+      { "name": "handoff", "value": "handoff 820ms cubic-bezier(0.16, 1, 0.3, 1) forwards — translateX(-100%) → translateX(100%), fading in at 22%", "purpose": "A banked-green gradient sweeping along the recipient's row when time is sent." },
+      { "name": "rise", "value": "rise 260ms cubic-bezier(0.16, 1, 0.3, 1) both — translateY(8px) and opacity 0 → 0", "purpose": "Entry only, for the send sheet, notice banners, and the reminder offer." },
+      { "name": "ring-drain", "value": "stroke-dashoffset 600ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "The check-in window emptying around the stopwatch face." },
+      { "name": "chrome-fade", "value": "opacity 200ms", "purpose": "Large title out, compact bar in, with 44px/24px hysteresis thresholds." },
+      { "name": "reduced-motion", "value": "@media (prefers-reduced-motion: reduce) { animation: none }", "purpose": "All three authored animations are switched off, and the hundredths fall back to whole seconds." }
+    ],
+    "breakpoints": [
+      { "name": "column", "value": "448px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Capsule (Run)",
+      "kind": "button",
+      "refersTo": "capsule-run",
+      "description": "The primary control: a pill filled with 18% of its system colour, labelled in that colour at full strength.",
+      "html": "<button class=\"ds-capsule ds-capsule-run\">I'm Still Here</button>",
+      "css": ".ds-capsule { font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); font-size: 17px; font-weight: 500; border: none; border-radius: 9999px; padding: 14px 24px; cursor: pointer; transition: background-color 150ms, opacity 150ms; } .ds-capsule-run { color: var(--color-run, #ff9f0a); background: color-mix(in srgb, var(--color-run, #ff9f0a) 18%, transparent); } .ds-capsule-run:hover { background: color-mix(in srgb, var(--color-run, #ff9f0a) 24%, transparent); } .ds-capsule-run:focus-visible { outline: 2px solid var(--color-run, #ff9f0a); outline-offset: 2px; border-radius: 9999px; } .ds-capsule-run:active { transform: scale(0.965); }"
+    },
+    {
+      "name": "Capsule (Bank)",
+      "kind": "button",
+      "refersTo": "capsule-bank",
+      "description": "The banked-time control. Same recipe, green system colour. Disabled state shown via the raise fill.",
+      "html": "<button class=\"ds-capsule ds-capsule-bank\">Send Time</button> <button class=\"ds-capsule ds-capsule-bank\" disabled>Send Time</button>",
+      "css": ".ds-capsule { font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); font-size: 17px; font-weight: 500; border: none; border-radius: 9999px; padding: 14px 24px; cursor: pointer; transition: background-color 150ms, opacity 150ms; } .ds-capsule-bank { color: var(--color-bank, #30d158); background: color-mix(in srgb, var(--color-bank, #30d158) 18%, transparent); } .ds-capsule-bank:hover:not(:disabled) { background: color-mix(in srgb, var(--color-bank, #30d158) 24%, transparent); } .ds-capsule-bank:focus-visible { outline: 2px solid var(--color-run, #ff9f0a); outline-offset: 2px; } .ds-capsule-bank:disabled { color: var(--color-label-3, #7c7c82); background: var(--color-raise, #1c1c1e); opacity: 0.35; cursor: default; }"
+    },
+    {
+      "name": "List Row",
+      "kind": "custom",
+      "refersTo": "row",
+      "description": "The lap row: label leading, tabular value trailing, 20px leading inset supplied by the row itself, hairline beneath running to the trailing edge.",
+      "html": "<div class=\"ds-row\"><div class=\"ds-row-body\"><div class=\"ds-row-main\"><div class=\"ds-row-label\">Personal best</div><div class=\"ds-row-sub\">Your longest run</div></div><div class=\"ds-row-value\">41d 06:12:55</div></div></div>",
+      "css": ".ds-row { width: 100%; padding-left: 20px; text-align: left; background: var(--color-void, #000); font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); } .ds-row:hover { background: color-mix(in srgb, var(--color-raise, #1c1c1e) 60%, transparent); } .ds-row-body { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 20px 10px 0; border-bottom: 1px solid var(--color-hairline, #38383a); } @media (min-resolution: 2dppx) { .ds-row-body { border-bottom-width: 0.5px; } } .ds-row-main { min-width: 0; flex: 1; } .ds-row-label { font-size: 17px; color: var(--color-label, #fff); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-row-sub { margin-top: 2px; font-size: 13px; color: var(--color-label-2, #8e8e93); } .ds-row-value { flex-shrink: 0; font-size: 17px; color: var(--color-bank, #30d158); font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1, 'ss01' 1; }"
+    },
+    {
+      "name": "Section Header",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "The grouped-list header and its inset leading rule. The 20px inset is defined on the rule, not on a container.",
+      "html": "<div class=\"ds-section\"><h2 class=\"ds-section-title\">Banked</h2><div class=\"ds-section-rule\"></div></div>",
+      "css": ".ds-section { margin-top: 28px; font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); } .ds-section-title { margin: 0; padding: 0 20px 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-label-2, #8e8e93); } .ds-section-rule { margin-left: 20px; height: 1px; background: var(--color-hairline, #38383a); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-filter",
+      "description": "Horizontally scrolling board selector. Unselected is a raise fill; selected is an 18% run tint.",
+      "html": "<div class=\"ds-chiprow\"><button class=\"ds-chip ds-chip-on\">Longest run</button><button class=\"ds-chip\">Most given</button><button class=\"ds-chip\">Most revived</button></div>",
+      "css": ".ds-chiprow { display: flex; gap: 6px; overflow-x: auto; padding: 12px 20px 4px; } .ds-chip { flex-shrink: 0; white-space: nowrap; border: none; cursor: pointer; border-radius: 9999px; padding: 6px 14px; font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); font-size: 13px; font-weight: 500; color: var(--color-label-2, #8e8e93); background: var(--color-raise, #1c1c1e); transition: background-color 150ms, color 150ms; } .ds-chip:hover { color: var(--color-label, #fff); } .ds-chip:focus-visible { outline: 2px solid var(--color-run, #ff9f0a); outline-offset: 2px; } .ds-chip-on { color: var(--color-run, #ff9f0a); background: color-mix(in srgb, var(--color-run, #ff9f0a) 18%, transparent); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Borderless raise-filled field with a 13px label above and a hint below.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Handle</span><input class=\"ds-field-input\" placeholder=\"yourname\" /><span class=\"ds-field-hint\">How friends find you.</span></label>",
+      "css": ".ds-field { display: block; font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); } .ds-field-label { display: block; padding-bottom: 4px; font-size: 13px; color: var(--color-label-2, #8e8e93); } .ds-field-input { width: 100%; border: none; border-radius: 12px; background: var(--color-raise, #1c1c1e); color: var(--color-label, #fff); padding: 10px 16px; font-size: 17px; font-family: inherit; } .ds-field-input::placeholder { color: var(--color-label-2, #8e8e93); } .ds-field-input:focus { outline: none; } .ds-field-input:focus-visible { outline: 2px solid var(--color-run, #ff9f0a); outline-offset: 2px; } .ds-field-hint { display: block; padding-top: 4px; font-size: 13px; color: var(--color-label-2, #8e8e93); }"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "tab-bar",
+      "description": "Solid void fill with one hairline top border, authored 26px SVG icons at 1.6 stroke weight, active tab in the run colour.",
+      "html": "<nav class=\"ds-tabbar\" aria-label=\"Sections\"><ul class=\"ds-tablist\"><li class=\"ds-tabitem\"><button class=\"ds-tab ds-tab-on\" aria-current=\"page\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"13.5\" r=\"7.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M12 13.5V9.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M9.6 2.5h4.8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M18.4 7.1l1.3-1.3\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/></svg><span class=\"ds-tab-label\">Uptime</span></button></li><li class=\"ds-tabitem\"><button class=\"ds-tab\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"9.5\" cy=\"8\" r=\"3.4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M3.4 19.2c0-3.1 2.7-5.3 6.1-5.3s6.1 2.2 6.1 5.3\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M16.4 6.1a3 3 0 0 1 0 5.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M18.2 14.5c1.5.7 2.4 2 2.4 3.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/></svg><span class=\"ds-tab-label\">People</span></button></li><li class=\"ds-tabitem\"><button class=\"ds-tab\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4.5 20V12.8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M12 20V4.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><path d=\"M19.5 20v-11\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"/></svg><span class=\"ds-tab-label\">Boards</span></button></li></ul></nav>",
+      "css": ".ds-tabbar { background: var(--color-void, #000); padding-bottom: 4px; } .ds-tablist { display: flex; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--color-hairline, #38383a); } .ds-tabitem { flex: 1; } .ds-tab { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border: none; background: none; cursor: pointer; color: var(--color-label-2, #8e8e93); font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); transition: color 150ms; } .ds-tab:hover { color: var(--color-label, #fff); } .ds-tab:focus-visible { outline: 2px solid var(--color-run, #ff9f0a); outline-offset: -2px; } .ds-tab-on, .ds-tab-on:hover { color: var(--color-run, #ff9f0a); } .ds-tab-label { font-size: 10px; font-weight: 500; letter-spacing: 0.01em; }"
+    },
+    {
+      "name": "Stopwatch Face",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "The signature: the Timer's 60-tick ring carrying the draining check-in window, around the Stopwatch's face carrying the day count and the running clock with hundredths.",
+      "html": "<div class=\"ds-face\"><svg class=\"ds-face-ring\" width=\"280\" height=\"280\" viewBox=\"0 0 280 280\" aria-hidden=\"true\"><g stroke=\"#38383a\" stroke-linecap=\"round\"><line x1=\"264\" y1=\"140\" x2=\"268\" y2=\"140\" stroke-width=\"2\" opacity=\"0.9\"/><line x1=\"255.6\" y1=\"180.1\" x2=\"259.4\" y2=\"181.4\" stroke-width=\"1\" opacity=\"0.55\"/><line x1=\"231.6\" y1=\"213.1\" x2=\"234.7\" y2=\"215.6\" stroke-width=\"1\" opacity=\"0.55\"/><line x1=\"196.1\" y1=\"233.6\" x2=\"198.1\" y2=\"237.1\" stroke-width=\"1\" opacity=\"0.55\"/><line x1=\"140\" y1=\"264\" x2=\"140\" y2=\"268\" stroke-width=\"2\" opacity=\"0.9\"/><line x1=\"16\" y1=\"140\" x2=\"12\" y2=\"140\" stroke-width=\"2\" opacity=\"0.9\"/><line x1=\"140\" y1=\"16\" x2=\"140\" y2=\"12\" stroke-width=\"2\" opacity=\"0.9\"/></g><circle cx=\"140\" cy=\"140\" r=\"121\" fill=\"none\" stroke=\"#2c2c2e\" stroke-width=\"6\"/><circle class=\"ds-face-arc\" cx=\"140\" cy=\"140\" r=\"121\" fill=\"none\" stroke=\"var(--color-run, #ff9f0a)\" stroke-width=\"6\" stroke-linecap=\"round\" stroke-dasharray=\"760.3\" stroke-dashoffset=\"190\"/></svg><div class=\"ds-face-center\"><div class=\"ds-face-days\"><span class=\"ds-face-num\">41</span><span class=\"ds-face-unit\">days</span></div><div class=\"ds-face-clock\" aria-hidden=\"true\"><span>06:12:55</span><span class=\"ds-face-hund\">.48</span></div></div></div>",
+      "css": ".ds-face { position: relative; width: 280px; height: 280px; font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); } .ds-face-ring { position: absolute; inset: 0; transform: rotate(-90deg); } .ds-face-arc { transition: stroke-dashoffset 600ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-face-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; } .ds-face-days { position: relative; } .ds-face-num { display: block; font-size: 76px; font-weight: 300; line-height: 1; letter-spacing: -0.045em; color: var(--color-label, #fff); font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1, 'ss01' 1; } .ds-face-unit { position: absolute; bottom: 8px; left: 100%; margin-left: 8px; font-size: 14px; font-weight: 500; white-space: nowrap; color: var(--color-label-2, #8e8e93); } .ds-face-clock { display: flex; align-items: baseline; margin-top: 12px; font-size: 24px; font-weight: 300; color: var(--color-label, #fff); font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1, 'ss01' 1; } .ds-face-hund { color: var(--color-label-2, #8e8e93); }"
+    },
+    {
+      "name": "Send Sheet",
+      "kind": "custom",
+      "refersTo": "sheet",
+      "description": "The rising sheet: raise fill, 22px top corners, hairline top border, grab handle, preset pills, and a capsule pair. No shadow.",
+      "html": "<div class=\"ds-sheet\"><div class=\"ds-sheet-grab\"></div><h2 class=\"ds-sheet-title\">Send time to Ada</h2><p class=\"ds-sheet-body\">You have <span class=\"ds-sheet-bal\">3d 04:00:00</span> banked. Giving it away never shortens your own streak.</p><div class=\"ds-sheet-presets\"><button class=\"ds-preset\">1h</button><button class=\"ds-preset ds-preset-on\">6h</button><button class=\"ds-preset\">1d</button></div></div>",
+      "css": ".ds-sheet { width: 100%; max-width: 448px; border-top: 1px solid var(--color-hairline, #38383a); border-radius: 22px 22px 0 0; background: var(--color-raise, #1c1c1e); padding: 20px 20px 32px; font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); } .ds-sheet-grab { margin: 0 auto 20px; height: 4px; width: 36px; border-radius: 9999px; background: var(--color-raise-2, #2c2c2e); } .ds-sheet-title { margin: 0; font-size: 20px; font-weight: 600; color: var(--color-label, #fff); } .ds-sheet-body { margin: 6px 0 0; font-size: 15px; color: var(--color-label-2, #8e8e93); } .ds-sheet-bal { color: var(--color-bank, #30d158); font-variant-numeric: tabular-nums; } .ds-sheet-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; } .ds-preset { border: none; cursor: pointer; border-radius: 9999px; padding: 10px 16px; font-family: inherit; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--color-label, #fff); background: var(--color-raise-2, #2c2c2e); transition: background-color 150ms, color 150ms; } .ds-preset:focus-visible { outline: 2px solid var(--color-run, #ff9f0a); outline-offset: 2px; } .ds-preset-on { color: var(--color-bank, #30d158); background: color-mix(in srgb, var(--color-bank, #30d158) 20%, transparent); }"
+    },
+    {
+      "name": "Notice Banner",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Transient status message: 12px radius, 15% tint of bank or lapse, matching text colour, inset 20px.",
+      "html": "<div class=\"ds-notice ds-notice-good\" role=\"status\">6h sent to Ada.</div><div class=\"ds-notice ds-notice-bad\" role=\"status\">Your streak reset.</div>",
+      "css": ".ds-notice { margin: 12px 20px 0; border-radius: 12px; padding: 12px 16px; font-family: var(--font-sans, 'Inter Variable', system-ui, sans-serif); font-size: 15px; } .ds-notice-good { color: var(--color-bank, #30d158); background: color-mix(in srgb, var(--color-bank, #30d158) 15%, transparent); } .ds-notice-bad { color: var(--color-lapse, #ff453a); background: color-mix(in srgb, var(--color-lapse, #ff453a) 15%, transparent); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Clock That Was Never Stopped",
+    "overview": "Uptime wears the iPhone Clock app's grammar because the product *is* that screen: a stopwatch somebody started and never stopped. The Timer's ring with its 60-tick track carries the check-in window; the Stopwatch's face carries the run, down to hundredths. Nothing quotes the Clock app decoratively — the whole surface is built out of its materials: a true-black ground, light-weight white numerals with tabular figures, hairline separators, full-bleed ruled rows, and pill controls filled with a low-alpha tint of their own colour.\n\nDensity is high and even. Every screen is one bounded column of rows on black, inset 20px from the leading edge, with a collapsing large title above and a solid tab bar below. There is no card stack, no flame, no gradient hero, no dashboard widgetry. The refused reference is explicit: the card-stack streak dashboard and its flame.\n\nColour is a law rather than a palette. Orange owns the live run, green owns banked time, red owns a lapse, grey owns everything else — and nothing else in the app gets an accent. Depth is done entirely with tonal layering (#000000 → #1c1c1e → #2c2c2e) and hairlines; there is not a single box-shadow in the build.",
+    "keyCharacteristics": [
+      "True-black ground (#000000), never a dark grey",
+      "Light-weight (300) tabular numerals for every measurement",
+      "0.5px hairlines at 2dppx, 1px below",
+      "Pill controls with an 18% tinted fill and a full-strength label",
+      "Four colour roles, each owning exactly one system",
+      "Zero shadows, zero persistent cards",
+      "Exactly two authored motion moments"
+    ],
+    "rules": [
+      { "name": "The One System One Colour Rule", "body": "Orange means the run, green means banked time, red means a lapse, grey means everything else. A colour never appears for emphasis, decoration, category, or variety. If a new element has no system, it is grey.", "section": "colors" },
+      { "name": "The Tint-18 Rule", "body": "Coloured controls are never solid. They are a fill of color-mix(in srgb, <colour> 18%, transparent) with the full-strength colour as the label, so a control reads as its system at a glance. A selected state may go one notch up (20–22%); nothing goes solid.", "section": "colors" },
+      { "name": "The Single Accent Per Scale Rule", "body": "When a figure and its ring appear together, only one of them carries the accent. The ring takes the system colour and the numeral stays white; tinting both puts two accents at the same scale and flattens the hierarchy between \"what this is\" and \"how long is left\".", "section": "colors" },
+      { "name": "The Tabular Figures Rule", "body": "Every figure in the app is a measurement, so every figure carries font-variant-numeric: tabular-nums plus \"tnum\" 1, \"ss01\" 1 (the .tnum class). This is the detail that stops a stopwatch face jittering as it runs; a number rendered in proportional figures is a bug.", "section": "typography" },
+      { "name": "The Light-at-Size Rule", "body": "Weight falls as size rises. Display and readout are 300, body is 400, and 600/700 are reserved for headers, control labels, and the large title. A bold numeral at display size belongs to a fitness dashboard, not to a clock.", "section": "typography" },
+      { "name": "The One Inset Definition Rule", "body": "The leading margin is 20px and it is defined in exactly one place per element type: rows supply their own padding-left: 20px, and a section's leading rule is a separate 1px element with margin-left: 20px. Never put the inset on a section container that already holds padded rows — that path produced three different margins across four screens.", "section": "layout" },
+      { "name": "The Full-Bleed Trailing Edge Rule", "body": "Rows are inset on the leading edge only. The hairline under a row runs to the trailing edge of the column, the way a lap list does.", "section": "layout" },
+      { "name": "The No Card Rule", "body": "Persistent content is never boxed. Lists are full-bleed rows divided by hairlines and a screen's content sits directly on the void. Rounded tonal surfaces exist only for things that arrive and leave — the send sheet, the reminder offer, a notice banner — and even those are flat fills with no shadow and no border beyond the sheet's top hairline.", "section": "elevation" },
+      { "name": "The Hairline Rule", "body": "A separator is 1px solid #38383a, narrowed to 0.5px at min-resolution: 2dppx. There is no other divider weight and no other divider colour.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do put new screens on void (#000000) with full-bleed hairline-ruled rows, inset 20px on the leading edge only.",
+      "Do define that 20px inset once per element: padding-left on the row, margin-left on the section's leading rule.",
+      "Do mark every figure with the .tnum class.",
+      "Do tint coloured controls at 18% and keep the label at full strength.",
+      "Do build depth with the tonal ladder (void → raise → raise-2) plus hairlines.",
+      "Do author new icons as SVG paths at 1.6 stroke weight on a 24 viewBox, matching the existing four.",
+      "Do disable any new animation under prefers-reduced-motion, and hide fast-changing numerals from the accessibility tree while labelling their container.",
+      "Do keep text on label-3 (#7c7c82) or lighter; the iOS tertiary grey is not contrast-safe here."
+    ],
+    "donts": [
+      "Don't add a box-shadow anywhere, for any state.",
+      "Don't put persistent content in a card; rounded tonal surfaces are for sheets, notices, and transient offers only.",
+      "Don't introduce a fifth colour, or reuse run / bank / lapse for anything other than the live run, banked time, and a lapse.",
+      "Don't make the tab bar translucent — over true black a material reads as a content leak, not as depth.",
+      "Don't tint both a ring and the figure inside it.",
+      "Don't add a third authored animation. Motion is confirm (the check-in press) and handoff (the sweep along the recipient's row); rise is entry-only for sheets and notices.",
+      "Don't set a figure at display size in a weight above 300, or render any number in proportional figures.",
+      "Don't reach for a flame, a gradient hero, a progress-dashboard widget, or a card stack — that is the exact reference this world refuses."
+    ]
+  }
+}

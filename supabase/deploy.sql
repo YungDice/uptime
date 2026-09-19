@@ -6,7 +6,8 @@
 -- 5432/6543 are blocked), so `supabase db push` cannot run from here.
 --
 -- Safe to re-run: every statement is CREATE OR REPLACE, CREATE IF NOT EXISTS,
--- or a DROP ... IF EXISTS followed by a CREATE.
+-- or a DROP ... IF EXISTS followed by a CREATE. Re-running it on a database
+-- that already has the earlier migrations applies only what changed.
 --
 -- Generated from:
 --   0001_schema.sql
@@ -17,12 +18,13 @@
 --   0006_boards_and_rls.sql
 --   0007_push.sql
 --   0008_follows.sql
+--   0009_accounts.sql
+--   0010_avatars_and_follow_direction.sql
+--   0011_public_profiles.sql
 
-begin;
-
--- ======================================================================
+-- ==========================================================================
 -- 0001_schema.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: core schema.
 --
@@ -117,9 +119,9 @@ create table if not exists gifts (
 create index if not exists gifts_from_idx on gifts (from_user_id, created_at desc);
 create index if not exists gifts_to_idx on gifts (to_user_id, created_at desc);
 
--- ======================================================================
+-- ==========================================================================
 -- 0002_derivations.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: the derived quantities.
 --
@@ -208,9 +210,9 @@ returns boolean language sql stable as $$
   select uptime_now() - created_at >= uptime_min_account_age() from profiles where id = p_user;
 $$;
 
--- ======================================================================
+-- ==========================================================================
 -- 0003_sweep_and_snapshot.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: the lapse sweep and the read model.
 
@@ -412,9 +414,9 @@ $$;
 
 grant execute on function uptime_open() to authenticated;
 
--- ======================================================================
+-- ==========================================================================
 -- 0004_actions.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: the write surface.
 --
@@ -518,9 +520,9 @@ begin
 end;
 $$;
 
--- ======================================================================
+-- ==========================================================================
 -- 0005_economy_actions.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: sending and reviving. The only place time changes hands.
 
@@ -650,9 +652,9 @@ begin
 end;
 $$;
 
--- ======================================================================
+-- ==========================================================================
 -- 0006_boards_and_rls.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: leaderboards and row-level security.
 
@@ -772,9 +774,9 @@ grant execute on function uptime_send_time(uuid, bigint)        to authenticated
 grant execute on function uptime_revive(uuid)                   to authenticated;
 grant execute on function uptime_board(text, int)               to authenticated, anon;
 
--- ======================================================================
+-- ==========================================================================
 -- 0007_push.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: device registration for the check-in prompt.
 --
@@ -857,9 +859,9 @@ revoke all on device_tokens, nudges from anon, authenticated;
 grant select on device_tokens to authenticated;
 grant execute on function uptime_register_device(text, text) to authenticated;
 
--- ======================================================================
+-- ==========================================================================
 -- 0008_follows.sql
--- ======================================================================
+-- ==========================================================================
 
 -- Uptime: finding and following people.
 --
@@ -933,4 +935,669 @@ grant execute on function uptime_find_user(text) to authenticated;
 grant execute on function uptime_follow(text)    to authenticated;
 grant execute on function uptime_unfollow(uuid)  to authenticated;
 
-commit;
+-- ==========================================================================
+-- 0009_accounts.sql
+-- ==========================================================================
+
+-- Uptime: accounts.
+--
+-- Playing without an account is a first-class state, not a degraded one: the
+-- clock starts on the first tap and the streak is real. What an anonymous
+-- account cannot do is take part in anything involving other people - it
+-- cannot appear on a leaderboard and it cannot donate time.
+--
+-- The reason is abuse, not ceremony. Anonymous accounts are free and unlimited,
+-- so a ranking that counted them would be a ranking of whoever scripted the
+-- most signups, and a donation ledger that accepted them would be a free
+-- supply of senders. Both defences have to live here, where the client cannot
+-- reach them.
+
+-- Authoritative and always current: Supabase flips this column itself when an
+-- anonymous user attaches an email, so there is no flag of ours to keep in
+-- sync and no window where a just-upgraded account still reads as anonymous.
+create or replace function uptime_is_anonymous(p_user uuid)
+returns boolean language sql stable security definer set search_path = public, auth as $$
+  select coalesce(u.is_anonymous, true) from auth.users u where u.id = p_user;
+$$;
+
+-- What the client needs to render the account surface, and to explain a
+-- refusal before the round trip rather than after it.
+create or replace function uptime_account()
+returns jsonb language sql stable security definer set search_path = public, auth as $$
+  select jsonb_build_object(
+           'isAnonymous', coalesce(u.is_anonymous, true),
+           'email', u.email,
+           'createdAt', extract(epoch from u.created_at)::bigint)
+    from auth.users u where u.id = auth.uid();
+$$;
+
+-- --- handles ---------------------------------------------------------------
+-- A handle is how one person finds another, so it is the one identifier a user
+-- should get to choose. Uniqueness and shape are enforced here; the table
+-- constraint is the backstop.
+
+create or replace function uptime_set_handle(p_handle text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  wanted text := lower(trim(p_handle));
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('ok', false, 'message', 'Not signed in');
+  end if;
+  if wanted !~ '^[a-z0-9_]{2,24}$' then
+    return jsonb_build_object('ok', false, 'message',
+      'Handles are 2-24 characters, using letters, numbers and underscores.');
+  end if;
+  if exists (select 1 from profiles where handle = wanted and id <> auth.uid()) then
+    return jsonb_build_object('ok', false, 'message', 'That handle is taken.');
+  end if;
+
+  update profiles set handle = wanted where id = auth.uid();
+  return jsonb_build_object('ok', true, 'message', 'Handle updated.', 'snapshot', uptime_snapshot());
+end;
+$$;
+
+create or replace function uptime_set_display_name(p_name text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  wanted text := trim(p_name);
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('ok', false, 'message', 'Not signed in');
+  end if;
+  if length(wanted) < 1 or length(wanted) > 40 then
+    return jsonb_build_object('ok', false, 'message', 'Pick a name between 1 and 40 characters.');
+  end if;
+
+  update profiles set display_name = wanted where id = auth.uid();
+  return jsonb_build_object('ok', true, 'message', 'Name updated.', 'snapshot', uptime_snapshot());
+end;
+$$;
+
+grant execute on function uptime_is_anonymous(uuid)   to authenticated;
+grant execute on function uptime_account()            to authenticated;
+grant execute on function uptime_set_handle(text)     to authenticated;
+grant execute on function uptime_set_display_name(text) to authenticated;
+
+-- --- the two things an anonymous account cannot do -------------------------
+
+-- 1. Donate. Rebuilt rather than patched so the gate sits with the other
+--    refusals, in the order a user meets them.
+create or replace function uptime_send_time(p_to uuid, p_amount bigint)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  me_id uuid := auth.uid();
+  recipient profiles;
+  bal bigint;
+  today bigint;
+begin
+  if me_id is null then return jsonb_build_object('ok', false, 'message', 'Not signed in'); end if;
+  perform uptime_sweep_user(me_id);
+  perform uptime_sweep_user(p_to);
+
+  if uptime_is_anonymous(me_id) then
+    return jsonb_build_object('ok', false, 'message',
+      'Create an account to send time. Your streak carries over.');
+  end if;
+
+  if p_amount is null or p_amount <= 0 or p_amount <> floor(p_amount) then
+    return jsonb_build_object('ok', false, 'message', 'Pick an amount of time to send.');
+  end if;
+  if p_to = me_id then
+    return jsonb_build_object('ok', false, 'message', 'You cannot send time to yourself.');
+  end if;
+
+  -- Lock the sender row first so two concurrent sends cannot both read the
+  -- same balance and jointly overdraw it.
+  perform 1 from profiles where id = me_id for update;
+
+  select * into recipient from profiles where id = p_to;
+  if not found then
+    return jsonb_build_object('ok', false, 'message', 'That account no longer exists.');
+  end if;
+
+  if not uptime_connected(me_id, p_to) then
+    return jsonb_build_object('ok', false, 'message', 'You can only send time to people you both follow.');
+  end if;
+
+  bal := uptime_balance(me_id);
+  if p_amount > bal then
+    return jsonb_build_object('ok', false, 'message', 'That is more than you have banked.');
+  end if;
+
+  today := uptime_sent_in_last_day(me_id);
+  if today + p_amount > uptime_max_sent_per_day() then
+    return jsonb_build_object('ok', false, 'message',
+      'You have hit today''s sending limit. It resets on a rolling 24 hours.');
+  end if;
+
+  insert into gifts (from_user_id, to_user_id, amount_seconds)
+  values (me_id, p_to, p_amount);
+
+  perform uptime_touch(me_id);
+  perform uptime_touch(p_to);
+
+  return jsonb_build_object(
+    'ok', true,
+    'message', 'Sent to ' || recipient.display_name || '.',
+    'snapshot', uptime_snapshot());
+end;
+$$;
+
+-- Reviving spends banked time on someone else, so it is a donation too.
+create or replace function uptime_revive(p_user uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  me_id uuid := auth.uid();
+  friend profiles;
+  last_run streak_runs;
+  cost bigint;
+  restores bigint;
+begin
+  if me_id is null then return jsonb_build_object('ok', false, 'message', 'Not signed in'); end if;
+  perform uptime_sweep_user(me_id);
+  perform uptime_sweep_user(p_user);
+
+  if uptime_is_anonymous(me_id) then
+    return jsonb_build_object('ok', false, 'message',
+      'Create an account to revive a friend. Your streak carries over.');
+  end if;
+
+  perform 1 from profiles where id = me_id for update;
+  select * into friend from profiles where id = p_user for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'message', 'That account no longer exists.');
+  end if;
+  if not uptime_connected(me_id, p_user) then
+    return jsonb_build_object('ok', false, 'message', 'You can only revive people you both follow.');
+  end if;
+  if friend.streak_start is not null then
+    return jsonb_build_object('ok', false, 'message', friend.display_name || ' has a streak running.');
+  end if;
+
+  select * into last_run from streak_runs
+   where user_id = p_user and reason = 'lapsed' and revived_at is null
+   order by ended_at desc limit 1;
+  if not found then
+    return jsonb_build_object('ok', false, 'message', friend.display_name || ' has no broken streak to revive.');
+  end if;
+
+  cost := uptime_revive_cost(last_run.length_seconds);
+  restores := uptime_revived_length(last_run.length_seconds);
+
+  if cost > uptime_balance(me_id) then
+    return jsonb_build_object('ok', false, 'message', 'Not enough banked time for this rescue.');
+  end if;
+
+  insert into gifts (from_user_id, to_user_id, amount_seconds, revived_run_id)
+  values (me_id, p_user, cost, last_run.id);
+
+  update streak_runs set revived_at = uptime_now() where id = last_run.id;
+
+  update profiles
+     set streak_start = uptime_now() - restores,
+         last_seen = uptime_now(),
+         lifetime_seconds = greatest(0, lifetime_seconds - last_run.length_seconds)
+   where id = p_user;
+
+  perform uptime_touch(me_id);
+
+  return jsonb_build_object(
+    'ok', true,
+    'message', 'You brought ' || friend.display_name || ' back at ' || (restores / 86400)::int || ' days.',
+    'snapshot', uptime_snapshot());
+end;
+$$;
+
+-- 2. Appear on a leaderboard. Anonymous accounts are free and unlimited, so a
+--    board that counted them would rank whoever scripted the most signups.
+create or replace function uptime_board(p_board text, p_limit int default 20)
+returns jsonb language sql stable security definer set search_path = public as $$
+  with rows as (
+    select p.id, p.handle, p.display_name,
+           case p_board
+             when 'current-streak' then uptime_elapsed(p.streak_start, p.last_seen)
+             when 'longest-ever' then greatest(
+               uptime_elapsed(p.streak_start, p.last_seen),
+               coalesce((select max(length_seconds) from streak_runs r where r.user_id = p.id), 0))
+             when 'lifetime-total' then
+               p.lifetime_seconds + uptime_elapsed(p.streak_start, p.last_seen)
+             when 'most-donated' then
+               case when uptime_counts_toward_boards(p.id) then uptime_total_sent(p.id) else 0 end
+             when 'most-received' then uptime_total_received(p.id)
+             when 'most-revives' then
+               case when uptime_counts_toward_boards(p.id)
+                 then (select count(*) from gifts g
+                        where g.from_user_id = p.id and g.revived_run_id is not null)
+                 else 0 end
+             else 0
+           end as value
+      from profiles p
+     where not uptime_is_anonymous(p.id)
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'userId', id,
+           'handle', handle,
+           'displayName', display_name,
+           'value', value,
+           'unit', case when p_board = 'most-revives' then 'count' else 'seconds' end
+         ) order by value desc), '[]'::jsonb)
+    from (select * from rows where value > 0 order by value desc limit p_limit) ranked;
+$$;
+
+grant execute on function uptime_board(text, int) to authenticated, anon;
+
+-- ==========================================================================
+-- 0010_avatars_and_follow_direction.sql
+-- ==========================================================================
+
+-- Uptime: profile pictures, and which way a follow points.
+--
+-- Two additions that the read model could not express before:
+--
+--   1. An avatar. Stored in Supabase Storage rather than the database - a
+--      profile picture is a file, and putting bytes in a column would make
+--      every snapshot read carry them.
+--
+--   2. The *direction* of a follow. The friends list already returned people
+--      who follow you but whom you do not follow back, and labelled them
+--      identically to the opposite case. One is someone waiting on you; the
+--      other is someone you are waiting on. Only the first is a request you
+--      can act on, and the UI could not tell them apart.
+
+-- --- avatars ---------------------------------------------------------------
+
+alter table profiles add column if not exists avatar_url text;
+
+-- The bucket is public: an avatar is shown beside a handle on a leaderboard
+-- anyone can read, so a signed URL would buy nothing and cost a round trip per
+-- face. Writes are still restricted to the owner's own folder.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', true, 2097152,
+        array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update
+  set public = true,
+      file_size_limit = 2097152,
+      allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
+
+drop policy if exists avatars_public_read on storage.objects;
+create policy avatars_public_read on storage.objects
+  for select using (bucket_id = 'avatars');
+
+-- Objects live under a folder named for the owner's uid, which is what makes
+-- "your own avatar" expressible as a policy at all.
+drop policy if exists avatars_owner_insert on storage.objects;
+create policy avatars_owner_insert on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists avatars_owner_update on storage.objects;
+create policy avatars_owner_update on storage.objects
+  for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists avatars_owner_delete on storage.objects;
+create policy avatars_owner_delete on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Clients have no update privilege on profiles, so the column moves through
+-- here. The shape check is the point: without it this is a free field for
+-- pointing every viewer's browser at an arbitrary host, which turns a profile
+-- picture into a tracking beacon and lets one account display another's file.
+create or replace function uptime_set_avatar(p_url text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  me_id uuid := auth.uid();
+  wanted text := nullif(trim(coalesce(p_url, '')), '');
+begin
+  if me_id is null then
+    return jsonb_build_object('ok', false, 'message', 'Not signed in');
+  end if;
+
+  if wanted is not null and wanted !~ ('^https://[a-z0-9-]+\.supabase\.co/storage/v1/object/public/avatars/' || me_id::text || '/') then
+    return jsonb_build_object('ok', false, 'message', 'That image is not in your own avatar folder.');
+  end if;
+
+  update profiles set avatar_url = wanted where id = me_id;
+  perform uptime_touch(me_id);
+
+  return jsonb_build_object(
+    'ok', true,
+    'message', case when wanted is null then 'Photo removed.' else 'Photo updated.' end,
+    'snapshot', uptime_snapshot());
+end;
+$$;
+
+-- --- read model ------------------------------------------------------------
+
+create or replace function uptime_find_user(p_handle text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select case when p.id is null then null else jsonb_build_object(
+           'id', p.id,
+           'handle', p.handle,
+           'displayName', p.display_name,
+           'avatarUrl', p.avatar_url,
+           'createdAt', p.created_at) end
+    from profiles p where p.handle = lower(trim(p_handle));
+$$;
+
+-- Rebuilt rather than patched: the friends sub-select gains two booleans and
+-- every profile object gains a face, and a jsonb_set patch over this much
+-- nesting would be unreadable.
+create or replace function uptime_snapshot()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  me profiles;
+  result jsonb;
+begin
+  select * into me from profiles where id = auth.uid();
+  if not found then
+    raise exception 'No profile for the current user';
+  end if;
+
+  select jsonb_build_object(
+    'serverNow', uptime_now(),
+    'me', jsonb_build_object(
+      'id', me.id,
+      'handle', me.handle,
+      'displayName', me.display_name,
+      'avatarUrl', me.avatar_url,
+      'createdAt', me.created_at,
+      'streak', jsonb_build_object('streakStart', me.streak_start, 'lastSeen', me.last_seen),
+      'lifetimeSeconds', me.lifetime_seconds,
+      'history', coalesce((
+        select jsonb_agg(jsonb_build_object(
+                 'startedAt', r.started_at,
+                 'endedAt', r.ended_at,
+                 'length', r.length_seconds,
+                 'reason', r.reason,
+                 'revivedAt', r.revived_at) order by r.ended_at)
+          from streak_runs r where r.user_id = me.id), '[]'::jsonb)
+    ),
+    'status', uptime_status_json(me.streak_start, me.last_seen),
+    'windowAnchor', me.last_seen,
+    'balance', uptime_balance(me.id),
+    'totalSent', uptime_total_sent(me.id),
+    'totalReceived', uptime_total_received(me.id),
+    'sentInLastDay', uptime_sent_in_last_day(me.id),
+    'lastRun', (
+      select jsonb_build_object(
+               'startedAt', r.started_at, 'endedAt', r.ended_at,
+               'length', r.length_seconds, 'reason', r.reason,
+               'revivedAt', r.revived_at)
+        from streak_runs r where r.user_id = me.id
+       order by r.ended_at desc limit 1),
+    'personalBest', greatest(
+      uptime_elapsed(me.streak_start, me.last_seen),
+      coalesce((select max(length_seconds) from streak_runs where user_id = me.id), 0)),
+    'friends', coalesce((
+      select jsonb_agg(friend_json order by friend_order desc)
+        from (
+          select jsonb_build_object(
+                   'profile', jsonb_build_object(
+                     'id', f.id, 'handle', f.handle,
+                     'displayName', f.display_name,
+                     'avatarUrl', f.avatar_url,
+                     'createdAt', f.created_at),
+                   'streak', jsonb_build_object('streakStart', f.streak_start, 'lastSeen', f.last_seen),
+                   'connected', uptime_connected(me.id, f.id),
+                   'iFollow', exists (select 1 from follows w
+                                       where w.follower_id = me.id and w.followee_id = f.id),
+                   'followsMe', exists (select 1 from follows w
+                                         where w.follower_id = f.id and w.followee_id = me.id),
+                   'revive', case when last_run.id is null then null else jsonb_build_object(
+                     'lostLength', last_run.length_seconds,
+                     'restores', uptime_revived_length(last_run.length_seconds),
+                     'cost', uptime_revive_cost(last_run.length_seconds)) end
+                 ) as friend_json,
+                 uptime_elapsed(f.streak_start, f.last_seen) as friend_order
+            from profiles f
+            left join lateral (
+              select r.id, r.length_seconds
+                from streak_runs r
+               where r.user_id = f.id and r.reason = 'lapsed'
+                 and r.revived_at is null and f.streak_start is null
+               order by r.ended_at desc
+               limit 1
+            ) last_run on true
+           where f.id <> me.id
+             and (exists (select 1 from follows w
+                           where w.follower_id = me.id and w.followee_id = f.id)
+               or exists (select 1 from follows w
+                           where w.follower_id = f.id and w.followee_id = me.id))
+        ) friends), '[]'::jsonb),
+    'recentGifts', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', g.id,
+               'fromUserId', g.from_user_id,
+               'toUserId', g.to_user_id,
+               'amount', g.amount_seconds,
+               'createdAt', g.created_at,
+               'revivedStreakId', g.revived_run_id) order by g.created_at desc)
+        from (select * from gifts
+               where from_user_id = me.id or to_user_id = me.id
+               order by created_at desc limit 12) g), '[]'::jsonb)
+  ) into result;
+
+  return result;
+end;
+$$;
+
+-- Boards carry a face too, so the podium has something to show.
+create or replace function uptime_board(p_board text, p_limit int default 20)
+returns jsonb language sql stable security definer set search_path = public as $$
+  with rows as (
+    select p.id, p.handle, p.display_name, p.avatar_url,
+           case p_board
+             when 'current-streak' then uptime_elapsed(p.streak_start, p.last_seen)
+             when 'longest-ever' then greatest(
+               uptime_elapsed(p.streak_start, p.last_seen),
+               coalesce((select max(length_seconds) from streak_runs r where r.user_id = p.id), 0))
+             when 'lifetime-total' then
+               p.lifetime_seconds + uptime_elapsed(p.streak_start, p.last_seen)
+             when 'most-donated' then
+               case when uptime_counts_toward_boards(p.id) then uptime_total_sent(p.id) else 0 end
+             when 'most-received' then uptime_total_received(p.id)
+             when 'most-revives' then
+               case when uptime_counts_toward_boards(p.id)
+                 then (select count(*) from gifts g
+                        where g.from_user_id = p.id and g.revived_run_id is not null)
+                 else 0 end
+             else 0
+           end as value
+      from profiles p
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'userId', id,
+           'handle', handle,
+           'displayName', display_name,
+           'avatarUrl', avatar_url,
+           'value', value,
+           'unit', case when p_board = 'most-revives' then 'count' else 'seconds' end
+         ) order by value desc), '[]'::jsonb)
+    from (select * from rows where value > 0 order by value desc limit p_limit) ranked;
+$$;
+
+-- Where the caller sits on a board, so a profile can say "3rd" without
+-- shipping the whole table to the client to count it.
+create or replace function uptime_my_rank(p_board text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  with rows as (
+    select p.id,
+           case p_board
+             when 'current-streak' then uptime_elapsed(p.streak_start, p.last_seen)
+             when 'longest-ever' then greatest(
+               uptime_elapsed(p.streak_start, p.last_seen),
+               coalesce((select max(length_seconds) from streak_runs r where r.user_id = p.id), 0))
+             when 'lifetime-total' then
+               p.lifetime_seconds + uptime_elapsed(p.streak_start, p.last_seen)
+             when 'most-donated' then
+               case when uptime_counts_toward_boards(p.id) then uptime_total_sent(p.id) else 0 end
+             when 'most-received' then uptime_total_received(p.id)
+             when 'most-revives' then
+               case when uptime_counts_toward_boards(p.id)
+                 then (select count(*) from gifts g
+                        where g.from_user_id = p.id and g.revived_run_id is not null)
+                 else 0 end
+             else 0
+           end as value
+      from profiles p
+  ),
+  ranked as (
+    select id, value, rank() over (order by value desc) as position,
+           count(*) over () as total
+      from rows where value > 0
+  )
+  select coalesce((
+    select jsonb_build_object('board', p_board, 'position', position, 'of', total, 'value', value)
+      from ranked where id = auth.uid()), 'null'::jsonb);
+$$;
+
+grant execute on function uptime_set_avatar(text) to authenticated;
+grant execute on function uptime_my_rank(text)    to authenticated, anon;
+
+-- ==========================================================================
+-- 0011_public_profiles.sql
+-- ==========================================================================
+
+-- Uptime: other people's profiles, and the word for the name you pick.
+--
+-- Two changes that belong together because both are about the moment one user
+-- looks at another:
+--
+--   1. `uptime_profile`. Every list in the app draws names you can now tap,
+--      including a leaderboard full of strangers, and nothing could read a
+--      single account you were not already connected to. The friends array
+--      inside `uptime_snapshot` is not that read - it exists to draw rows in a
+--      list you are part of, and it stops at the edge of your own graph.
+--
+--   2. "Handle" becomes "Nickname" in every message a user can see. The column
+--      keeps its name: `handle` is what it is in the schema, in the unique
+--      index and in every function signature, and renaming a column to match a
+--      caption is how a rename turns into an outage. Only the strings move.
+
+-- --- a public profile -------------------------------------------------------
+
+-- Everything one profile page needs, for any account, in one round trip.
+--
+-- Deliberately returns the two raw timestamps rather than a computed elapsed:
+-- the client derives its own counter from `streakStart` against the ticking
+-- clock, and a profile whose counter was a number frozen at fetch time would
+-- be the one place in the app where somebody else's clock had stopped.
+--
+-- security definer, like every other read here, because RLS on `profiles`
+-- confines a client to its own row. What is exposed is the same public shape
+-- the boards already publish, plus the viewer's own relationship to it.
+create or replace function uptime_profile(p_user uuid)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  me_id uuid := auth.uid();
+  them profiles;
+  last_run streak_runs;
+begin
+  select * into them from profiles where id = p_user;
+  if not found then
+    return 'null'::jsonb;
+  end if;
+
+  -- The revivable run: the most recent lapse nobody has bought back yet, and
+  -- only while they are actually stopped. Same predicate the snapshot uses.
+  select * into last_run
+    from streak_runs r
+   where r.user_id = them.id
+     and r.reason = 'lapsed'
+     and r.revived_at is null
+     and them.streak_start is null
+   order by r.ended_at desc
+   limit 1;
+
+  return jsonb_build_object(
+    'profile', jsonb_build_object(
+      'id', them.id,
+      'handle', them.handle,
+      'displayName', them.display_name,
+      'avatarUrl', them.avatar_url,
+      'createdAt', them.created_at),
+    'streak', jsonb_build_object(
+      'streakStart', them.streak_start,
+      'lastSeen', them.last_seen),
+    'lifetimeSeconds', them.lifetime_seconds,
+    'personalBest', greatest(
+      uptime_elapsed(them.streak_start, them.last_seen),
+      coalesce((select max(length_seconds) from streak_runs where user_id = them.id), 0)),
+    'totalSent', uptime_total_sent(them.id),
+    'totalReceived', uptime_total_received(them.id),
+    'rescues', (select count(*) from gifts g
+                 where g.from_user_id = them.id and g.revived_run_id is not null),
+    'connected', me_id is not null and uptime_connected(me_id, them.id),
+    'iFollow', me_id is not null and exists (
+      select 1 from follows w where w.follower_id = me_id and w.followee_id = them.id),
+    'followsMe', me_id is not null and exists (
+      select 1 from follows w where w.follower_id = them.id and w.followee_id = me_id),
+    'revive', case when last_run.id is null then null else jsonb_build_object(
+      'lostLength', last_run.length_seconds,
+      'restores', uptime_revived_length(last_run.length_seconds),
+      'cost', uptime_revive_cost(last_run.length_seconds)) end);
+end;
+$$;
+
+grant execute on function uptime_profile(uuid) to authenticated, anon;
+
+-- --- "handle" -> "nickname", in the strings only ----------------------------
+
+create or replace function uptime_set_handle(p_handle text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  wanted text := lower(trim(p_handle));
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('ok', false, 'message', 'Not signed in');
+  end if;
+  if wanted !~ '^[a-z0-9_]{2,24}$' then
+    return jsonb_build_object('ok', false, 'message',
+      'Nicknames are 2-24 characters, using letters, numbers and underscores.');
+  end if;
+  if exists (select 1 from profiles where handle = wanted and id <> auth.uid()) then
+    return jsonb_build_object('ok', false, 'message', 'That nickname is taken.');
+  end if;
+
+  update profiles set handle = wanted where id = auth.uid();
+  return jsonb_build_object('ok', true, 'message', 'Nickname updated.', 'snapshot', uptime_snapshot());
+end;
+$$;
+
+create or replace function uptime_follow(p_handle text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  me_id uuid := auth.uid();
+  target profiles;
+begin
+  if me_id is null then
+    return jsonb_build_object('ok', false, 'message', 'Not signed in');
+  end if;
+
+  select * into target from profiles where handle = lower(trim(p_handle));
+  if not found then
+    return jsonb_build_object('ok', false, 'message', 'No account with that nickname.');
+  end if;
+  if target.id = me_id then
+    return jsonb_build_object('ok', false, 'message', 'That is you.');
+  end if;
+
+  insert into follows (follower_id, followee_id)
+  values (me_id, target.id)
+  on conflict do nothing;
+
+  perform uptime_touch(me_id);
+
+  return jsonb_build_object(
+    'ok', true,
+    'message', case
+      when uptime_connected(me_id, target.id)
+        then 'You and ' || target.display_name || ' can now send each other time.'
+      else 'Following ' || target.display_name || '. Time can move once they follow you back.'
+    end,
+    'snapshot', uptime_snapshot());
+end;
+$$;

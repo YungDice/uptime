@@ -1,6 +1,13 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { systemClock, type BoardEntry, type BoardId, type Clock, type Seconds } from "@/core";
-import type { ActionResult, Snapshot, UptimeStore } from "./store";
+import type {
+  Account,
+  ActionResult,
+  PublicProfile,
+  RankInfo,
+  Snapshot,
+  UptimeStore,
+} from "./store";
 
 export interface SupabaseConfig {
   url: string;
@@ -27,6 +34,18 @@ export function supabaseConfigFromEnv(): SupabaseConfig | null {
 export class SupabaseStore implements UptimeStore {
   private readonly client: SupabaseClient;
 
+  /**
+   * The account from the most recent read.
+   *
+   * The snapshot the SQL actions return does not carry one - `account` is a
+   * separate RPC, because it reads auth.users rather than the game tables - so
+   * without this every action would hand the UI a snapshot with no account at
+   * all, and the first component to ask whether the session is anonymous would
+   * throw. It changes only on sign-in, sign-out and the upgrade, and all three
+   * go through a full refresh, so caching it cannot go stale.
+   */
+  private lastAccount: Account | null = null;
+
   constructor(
     config: SupabaseConfig,
     private readonly clock: Clock = systemClock,
@@ -36,7 +55,7 @@ export class SupabaseStore implements UptimeStore {
     });
   }
 
-  async signIn(handle: string): Promise<Snapshot> {
+  async start(handle: string): Promise<Snapshot> {
     const { data: session } = await this.client.auth.getSession();
     if (!session.session) {
       // Anonymous sign-in keeps the first run frictionless; the account is
@@ -67,9 +86,130 @@ export class SupabaseStore implements UptimeStore {
   async refresh(): Promise<Snapshot> {
     // uptime_open, not uptime_snapshot: opening the app is a sign of life, and
     // the server has to record that and hand back the pre-touch window anchor.
-    const snapshot = await this.rpc<Snapshot>("uptime_open", {});
+    // The account rides alongside rather than inside, so that one big read
+    // model does not have to be redefined every time auth gains a field.
+    const [snapshot, account] = await Promise.all([
+      this.rpc<Snapshot>("uptime_open", {}),
+      this.rpc<Account>("uptime_account", {}),
+    ]);
     this.syncClock(snapshot.serverNow);
-    return snapshot;
+    this.lastAccount = account;
+    return { ...snapshot, account };
+  }
+
+  async signUp(email: string, password: string, handle: string): Promise<ActionResult> {
+    // updateUser, not signUp: the session is already an anonymous user, and
+    // attaching credentials to it keeps the same id - so the streak, the
+    // history and the balance survive the upgrade.
+    let { data, error } = await this.client.auth.updateUser({ email, password });
+
+    // The upgrade is not atomic, and that is the whole trap. Supabase applies
+    // the password immediately but, with email confirmations on, only *queues*
+    // the address. So an attempt abandoned at the inbox leaves an account that
+    // already has this password and still has no email - and retrying is then
+    // refused for reusing it. The password is the one the user just typed, so
+    // it is already the right one: re-send the address by itself rather than
+    // making them invent a password they do not need.
+    if (error?.code === "same_password") {
+      ({ data, error } = await this.client.auth.updateUser({ email }));
+    }
+    if (error) return { ok: false, message: error.message };
+
+    const named = await this.action("uptime_set_handle", { p_handle: handle });
+    if (!named.ok) return named;
+
+    const snapshot = await this.refresh();
+
+    // With email confirmations on - the default for a hosted project - the
+    // address is only *pending* until the link is clicked, and
+    // auth.users.is_anonymous stays true until it lands. Reporting "account
+    // created" here would be a claim the Account tab and the leaderboards both
+    // immediately contradict, so the message has to match what really
+    // happened. Turning confirmations off makes this branch unreachable.
+    const pending = data.user?.new_email;
+    if (pending !== undefined || snapshot.account.isAnonymous) {
+      return {
+        ok: true,
+        snapshot,
+        message: `Almost there - click the link sent to ${pending ?? email}. Your streak is safe, but you can't sign in until you do.`,
+      };
+    }
+
+    return {
+      ok: true,
+      snapshot,
+      message: "Account created. Your streak carried over.",
+    };
+  }
+
+  async signIn(email: string, password: string): Promise<ActionResult> {
+    const { error } = await this.client.auth.signInWithPassword({ email, password });
+    if (error) {
+      // "Invalid login credentials" is what Supabase says when an address is
+      // still only *pending* on this account, because until the link is
+      // clicked no user actually owns it. That reads as "wrong password" and
+      // sends people off to reset one that was never the problem, so name the
+      // real cause when the pending address is the one being typed.
+      if (error.code === "invalid_credentials") {
+        const { data: current } = await this.client.auth.getUser();
+        const pending = current.user?.new_email;
+        if (pending !== undefined && pending.toLowerCase() === email.trim().toLowerCase()) {
+          return {
+            ok: false,
+            message: `${pending} hasn't been confirmed yet - click the link in that email, then sign in.`,
+          };
+        }
+      }
+      return { ok: false, message: error.message };
+    }
+    return { ok: true, snapshot: await this.refresh(), message: "Signed in." };
+  }
+
+  async signOut(): Promise<ActionResult> {
+    const { error } = await this.client.auth.signOut();
+    if (error) return { ok: false, message: error.message };
+    // Signing out drops to a fresh anonymous account rather than to a dead
+    // screen: the app has to be usable without one, so that is where it lands.
+    const snapshot = await this.start("you");
+    return { ok: true, snapshot, message: "Signed out." };
+  }
+
+  async setHandle(handle: string): Promise<ActionResult> {
+    return this.action("uptime_set_handle", { p_handle: handle });
+  }
+
+  async setDisplayName(name: string): Promise<ActionResult> {
+    return this.action("uptime_set_display_name", { p_name: name });
+  }
+
+  async setAvatar(file: File | null): Promise<ActionResult> {
+    if (file === null) return this.action("uptime_set_avatar", { p_url: null });
+
+    const { data: current } = await this.client.auth.getUser();
+    const uid = current.user?.id;
+    if (uid === undefined) return { ok: false, message: "Not signed in." };
+
+    const ext = EXTENSIONS[file.type];
+    if (ext === undefined) return { ok: false, message: "Use a JPEG, PNG or WebP image." };
+    if (file.size > AVATAR_MAX_BYTES) return { ok: false, message: "That image is over 2 MB." };
+
+    // Named for the moment it was uploaded, not for the user. A fixed filename
+    // would be the same URL every time, so every viewer that had already seen
+    // the old face would keep showing it until their cache expired - and the
+    // one person guaranteed not to see the change is the one who made it.
+    // The uid folder is what the storage policy checks, so it has to lead.
+    const path = `${uid}/${Date.now()}.${ext}`;
+    const { error } = await this.client.storage
+      .from("avatars")
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) return { ok: false, message: error.message };
+
+    const { data: published } = this.client.storage.from("avatars").getPublicUrl(path);
+    return this.action("uptime_set_avatar", { p_url: published.publicUrl });
+  }
+
+  async myRank(id: BoardId): Promise<RankInfo | null> {
+    return (await this.rpc<RankInfo | null>("uptime_my_rank", { p_board: id })) ?? null;
   }
 
   async checkIn(): Promise<ActionResult> {
@@ -104,6 +244,10 @@ export class SupabaseStore implements UptimeStore {
     return this.rpc<BoardEntry[]>("uptime_board", { p_board: id });
   }
 
+  async profile(userId: string): Promise<PublicProfile | null> {
+    return (await this.rpc<PublicProfile | null>("uptime_profile", { p_user: userId })) ?? null;
+  }
+
   // --- internals -----------------------------------------------------------
 
   private syncClock(serverNow: Seconds): void {
@@ -129,7 +273,12 @@ export class SupabaseStore implements UptimeStore {
     const result = await this.rpc<{ ok: boolean; message: string; snapshot?: Snapshot }>(fn, args);
     if (result.ok && result.snapshot) {
       this.syncClock(result.snapshot.serverNow);
-      return { ok: true, snapshot: result.snapshot, message: result.message };
+      // Put the account back on. The SQL cannot supply it and the UI reads it
+      // on every render, so a snapshot handed over without one takes the whole
+      // app down rather than degrading.
+      const account = this.lastAccount ?? (await this.rpc<Account>("uptime_account", {}));
+      this.lastAccount = account;
+      return { ok: true, snapshot: { ...result.snapshot, account }, message: result.message };
     }
     return { ok: false, message: result.message };
   }
@@ -141,6 +290,23 @@ export class SupabaseStore implements UptimeStore {
  * Users will want to choose their own eventually; until that exists, this is
  * the thing that stops a second signup failing on the unique constraint.
  */
+/**
+ * Formats the avatar bucket accepts, and the extension each one is stored as.
+ *
+ * Mirrors `allowed_mime_types` on the bucket in `0010_avatars_and_follow_direction.sql`.
+ * Checked here as well so a wrong file is refused before it is uploaded rather
+ * than after, which is the difference between an instant message and a wasted
+ * round trip on a phone.
+ */
+const EXTENSIONS: Record<string, string | undefined> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+/** Mirrors the bucket's own `file_size_limit`. */
+const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
 function handleFor(userId: string, preferred: string): string {
   const stem = preferred.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 10) || "user";
   const suffix = userId.replace(/-/g, "").slice(0, 8);
@@ -156,13 +322,17 @@ function handleFor(userId: string, preferred: string): string {
  */
 function explain(error: { code?: string; message: string }): string {
   if (error.code === "PGRST202" || error.code === "PGRST205") {
+    // Naming what was missing distinguishes an empty project from one a
+    // migration behind - the fix is the same, the diagnosis is not.
+    const missing = /(?:function|table) (?:public\.)?([a-z_.]+)/i.exec(error.message)?.[1];
     return (
-      "This Supabase project has no Uptime schema yet. Run the migrations " +
-      "(npm run db:push, or paste supabase/deploy.sql into the SQL editor)."
+      `This Supabase project is missing ${missing ?? "the Uptime schema"}. ` +
+      "Apply the migrations: paste supabase/deploy.sql into the SQL editor, " +
+      "or run npm run db:push."
     );
   }
   if (error.code === "23505") {
-    return "That handle is already taken.";
+    return "That nickname is already taken.";
   }
   if (error.code === "42501") {
     return "Permission denied by row-level security. Check the grants in 0006_boards_and_rls.sql.";

@@ -62,7 +62,7 @@ export function useSession(store: UptimeStore, handle: string): Session {
     (async () => {
       setLoading(true);
       try {
-        const next = await store.signIn(handle);
+        const next = await store.start(handle);
         if (!cancelled) {
           apply(next);
           setError(null);

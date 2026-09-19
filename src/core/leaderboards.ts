@@ -16,6 +16,7 @@ export interface BoardEntry {
   userId: string;
   handle: string;
   displayName: string;
+  avatarUrl: string | null;
   value: Seconds | number;
   /** Rendered as a duration unless this says otherwise. */
   unit: "seconds" | "count";
@@ -56,6 +57,8 @@ export function buildBoard(
   const entries: BoardEntry[] = [];
 
   for (const user of users) {
+    // Anonymous accounts play, but they do not rank. See UserState.isAnonymous.
+    if (user.isAnonymous === true) continue;
     const status = statusOf(user.streak, now);
 
     switch (board) {
@@ -108,6 +111,7 @@ function entry(user: UserState, value: number, unit: "seconds" | "count"): Board
     userId: user.id,
     handle: user.handle,
     displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
     value,
     unit,
   };

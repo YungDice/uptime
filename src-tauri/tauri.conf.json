@@ -19,12 +19,12 @@
         "minHeight": 640,
         "resizable": true,
         "center": true,
-        "backgroundColor": "#0A0E17",
+        "backgroundColor": "#000000",
         "theme": "Dark"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co"
+      "csp": "default-src 'self'; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co"
     }
   },
   "bundle": {
@@ -39,6 +39,13 @@
     ],
     "category": "SocialNetworking",
     "shortDescription": "A streak you keep by existing",
-    "longDescription": "Uptime turns a stopwatch you never stop into a social game. Bank the time you keep, give it away, and bring a friend's broken streak back."
+    "longDescription": "Uptime turns a stopwatch you never stop into a social game. Bank the time you keep, give it away, and bring a friend's broken streak back.",
+    "android": {
+      "minSdkVersion": 24,
+      "debugApplicationIdSuffix": ".debug"
+    },
+    "iOS": {
+      "minimumSystemVersion": "16.2"
+    }
   }
 }

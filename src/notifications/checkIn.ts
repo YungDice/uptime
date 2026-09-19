@@ -1,4 +1,5 @@
 import { CHECK_IN_NUDGE_LEAD, type Seconds } from "@/core";
+import { isTauri } from "@/platform";
 
 /**
  * The client half of the check-in prompt.
@@ -35,9 +36,9 @@ async function plugin(): Promise<NotificationPlugin | null> {
   }
 }
 
-export function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
+// Re-exported so callers that already reason about notifications do not need
+// to know that the platform check lives elsewhere.
+export { isTauri };
 
 export async function permissionState(): Promise<PermissionState> {
   const api = await plugin();

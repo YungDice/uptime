@@ -3,7 +3,7 @@
 A streak you keep by existing.
 
 Uptime takes the "I started a stopwatch and never stopped it" trend and gives
-it stakes: the time you keep becomes a currency you can bank, give away, and
+it stakes: the time you keep becomes a currency you can give away and
 spend bringing a friend's broken streak back.
 
 The clock is never a running process. Every number in the app is
@@ -86,12 +86,22 @@ Without that, a returning user would find a zeroed counter and no explanation.
 
 ### The economy
 
-Banked time accrues at **10% of all time kept** and is separate from the streak,
-so giving time away never makes your own record look shorter than it ran.
+Giveable time accrues at **10% of all time kept** and is separate from the
+streak, so giving time away never makes your own record look shorter than it
+ran.
+
+It is deliberately **not** presented as a bank. There is no deposit, nothing to
+collect and no moment where time moves from one place to another - it is a
+tenth of the clock on the previous screen, and the interface shows it running.
+The client recomputes it against the ticking clock (`liveGiveable`) rather than
+reading the figure off the last snapshot, because a snapshot is only taken when
+something is pressed: on a running clock the old reading sat still for an hour
+and then jumped by the whole hour's accrual the moment anything refreshed it,
+which reads as the app inventing time.
 
 Reviving a broken streak restores **half** its lost length and costs the reviver
 that restored stretch's own accrual — 10% of it. A 400-day streak comes back at
-200 days and costs 20 banked days, which is more than most single users hold.
+200 days and costs 20 days of giveable time, more than most single users hold.
 That is intentional: a headline rescue takes more than one friend.
 
 Balances are sums over a ledger, never a column. That makes the donation and
@@ -113,14 +123,18 @@ reception boards a `GROUP BY` and gives a free audit trail.
 
 ### What was verified, and how
 
-- **62 automated tests** over the domain rules and the store, including lapse
+- **78 automated tests** over the domain rules and the store, including lapse
   timing, cap enforcement, revive pricing, the one-way-follow gate, window
-  anchoring and reload-from-storage.
+  anchoring, reload-from-storage, and every account rule (anonymous accounts
+  refused from sending and reviving, excluded from every board, and the streak
+  surviving an upgrade).
 - **The SQL was applied to a real PostgreSQL 17** and exercised end to end:
   derivation, the mutual-follow gate (a one-way follow is still refused), the
-  rolling cap, overdrafts, revive pricing, double-revive prevention, and the
-  leaderboards. The RLS was tested under Supabase's default grant posture, and
-  the write-guard trigger was tested with a grant deliberately restored.
+  rolling cap, overdrafts, revive pricing, double-revive prevention, the
+  leaderboards, and the account rules including an anonymous account being
+  refused a donation, excluded from the boards, and ranked the moment it is
+  upgraded. The RLS was tested under Supabase's default grant posture, and the
+  write-guard trigger was tested with a grant deliberately restored.
 - **Every screen was rendered in a headless browser** at phone width with no
   console errors, including the states that are awkward to reach by hand:
   a window about to close, a streak just swept, and a one-way follow.
@@ -164,13 +178,40 @@ the only thing standing between a dead streak and the leaderboards.
 
 ---
 
+## Accounts
+
+Playing without an account is a first-class state, not a trial. The clock starts
+on the first tap, the streak is real, and nothing nags. Two things stay switched
+off until there is an account:
+
+- the account does not appear on any leaderboard
+- it cannot send time or revive anyone
+
+Both limits are the same defence. Anonymous accounts are free and unlimited, so
+a board that counted them would rank whoever scripted the most signups, and a
+ledger that accepted them would be a free supply of senders. Both are enforced
+in SQL (`0009_accounts.sql`) and mirrored in the local adapter, so the client
+can explain a refusal before the round trip without being the thing enforcing
+it.
+
+Signing up is an **upgrade, not a new account**: Supabase keeps the same user id
+when an anonymous user attaches an email, so the streak, the history and the
+giveable balance all carry over. Losing a 95-day run to make an account would be
+the worst possible moment to ask for one. `auth.users.is_anonymous` flips itself
+on that upgrade, which is why nothing of ours has to be kept in sync — the
+account is ranked on the next read.
+
+---
+
 ## Three things to decide
 
 - **Following is the entry to everything social.** Gifts are gated on a mutual
   follow, so a fresh account can do nothing until it follows someone and is
-  followed back. There is a handle field on the People tab and that is the
-  whole discovery story — no search, no suggestions, no invite links. That is
-  probably the next thing worth designing.
+  followed back. Names are tappable everywhere now and open a profile you can
+  follow from, so the leaderboards are a discovery surface — but there is still
+  no search, no suggestions and no invite links, and the only way to reach
+  somebody who is not already on a board is to type their nickname exactly.
+  That is probably the next thing worth designing.
 - **The name.** `Uptime` is the working name and is used throughout, including
   the bundle identifier `com.yungdice.uptime`. It has not had the gut check
   against the Yung Dice brand that the build prompt asked for.

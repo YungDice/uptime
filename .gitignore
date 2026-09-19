@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-demo/
 dist-ssr/
 *.local
 
@@ -11,6 +12,13 @@ src-tauri/gen/
 .env
 .env.local
 .env.*.local
+
+# Impeccable working files: review captures and build state are per-run
+# artifacts. The surface briefs, PRODUCT.md and config are not - those are
+# the durable record and belong in the repo.
+.impeccable/review/
+.impeccable/build/
+.impeccable/mocks/
 
 # Editor / OS
 .vscode/*

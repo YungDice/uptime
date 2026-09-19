@@ -9,11 +9,19 @@ export function Section({ title, children }: { title?: string; children: ReactNo
   return (
     <section className="mt-7">
       {title ? (
-        <h2 className="px-5 pb-2 text-[13px] font-semibold tracking-[0.06em] text-label-2 uppercase">
+        <h2 className="flex items-center gap-2.5 px-5 pb-2 text-[12px] font-semibold tracking-[0.1em] text-label-2 uppercase">
           {title}
+          {/* A rule running out from the label to the edge. The heading used to
+              float above a full-width hairline that belonged to the rows below
+              it, so it read as a caption for the gap rather than for the list. */}
+          <span aria-hidden="true" className="h-px flex-1 bg-hairline opacity-60" />
         </h2>
       ) : null}
-      <div className="border-t border-hairline">{children}</div>
+      {/* The section's leading rule is inset to the same margin the rows
+          use, and the rows supply that margin themselves - so the inset has
+          exactly one definition instead of one per container. */}
+      <div className="ml-5 h-px bg-hairline" />
+      {children}
     </section>
   );
 }
@@ -46,7 +54,7 @@ export function Row({
           : "text-label-2";
 
   const body = (
-    <div className="relative flex min-h-[52px] items-center gap-3 overflow-hidden py-2.5 pr-5">
+    <div className="hairline relative flex min-h-[52px] items-center gap-3 overflow-hidden py-2.5 pr-5">
       {trailAnimation ? (
         <span
           aria-hidden="true"
@@ -68,7 +76,7 @@ export function Row({
     </div>
   );
 
-  const className = "hairline w-full pl-5 text-left";
+  const className = "w-full pl-5 text-left";
 
   return onClick ? (
     <button type="button" onClick={onClick} className={`${className} active:bg-raise`}>
@@ -90,6 +98,8 @@ export function Capsule({
   disabled,
   wide,
   pressed,
+  solid,
+  type = "button",
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -97,6 +107,24 @@ export function Capsule({
   disabled?: boolean;
   wide?: boolean;
   pressed?: boolean;
+  /**
+   * Struck in the colour rather than tinted with it.
+   *
+   * Exactly one control on a screen may be solid. The tinted capsule is the
+   * app's default because a screen of solid buttons has no primary action, and
+   * the home screen genuinely does have one - the tinted Stop and the tinted
+   * check-in were the same object at the same weight, which is how a
+   * destructive control ends up looking like the thing you press every day.
+   */
+  solid?: boolean;
+  /**
+   * Defaults to "button" so a capsule dropped inside a form cannot submit it by
+   * accident. A capsule that *is* the form's submit control has to say so - and
+   * must, because a form whose only control is a plain button has no way to be
+   * submitted at all: with more than one text field, the browser's implicit
+   * Enter-to-submit is suppressed too.
+   */
+  type?: "button" | "submit";
 }) {
   const color =
     tone === "run"
@@ -107,18 +135,55 @@ export function Capsule({
           ? "var(--color-lapse)"
           : "var(--color-label)";
 
+  const shared = `${wide ? "flex-1" : ""} ${
+    pressed ? "animate-confirm" : ""
+  } rounded-full px-6 py-3.5 text-[17px] font-semibold tracking-[-0.01em] transition-transform duration-150 active:scale-[0.97] disabled:scale-100 disabled:opacity-40`;
+
+  if (disabled) {
+    return (
+      <button type={type} disabled className={shared} style={{ color: "var(--color-label-3)", background: "var(--color-raise)" }}>
+        {children}
+      </button>
+    );
+  }
+
+  if (solid && tone !== "neutral") {
+    return (
+      <button
+        type={type}
+        onClick={onClick}
+        className={shared}
+        style={{
+          // Black on the accent, not white: these three colours are all light
+          // enough that white type on them fails contrast, and the Clock app's
+          // own filled controls are dark-on-colour for the same reason.
+          color: "#0b0b0c",
+          background: `var(--grad-${tone})`,
+          boxShadow: `inset 0 1px 0 0 rgb(255 255 255 / 40%), 0 8px 22px -10px color-mix(in srgb, ${color} 85%, transparent)`,
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  // Neutral is furniture: a plain raised surface, because a white "tint" is
+  // just a brighter grey and it came out louder than the coloured capsules it
+  // was meant to sit behind.
+  if (tone === "neutral") {
+    return (
+      <button type={type} onClick={onClick} className={`surface-2 ${shared}`} style={{ color }}>
+        {children}
+      </button>
+    );
+  }
+
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
-      disabled={disabled}
-      className={`${wide ? "flex-1" : ""} ${pressed ? "animate-confirm" : ""} rounded-full px-6 py-3.5 text-[17px] font-medium transition-[background-color,opacity] disabled:opacity-35`}
-      style={{
-        color: disabled ? "var(--color-label-3)" : color,
-        background: disabled
-          ? "var(--color-raise)"
-          : `color-mix(in srgb, ${color} 18%, transparent)`,
-      }}
+      className={`surface-tint ${shared}`}
+      style={{ color, ["--tint" as string]: color }}
     >
       {children}
     </button>

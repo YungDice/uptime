@@ -14,12 +14,22 @@ export { SupabaseStore } from "./supabase";
  * playable either way, which keeps the UI honest: nothing can quietly depend
  * on a backend that is not there.
  */
+/**
+ * An explicit opt-out, rather than blanking the Supabase variables.
+ *
+ * Emptying them in a mode file is fragile - it depends on env precedence and
+ * reads as a mistake to anyone who finds it. A named flag says what it is.
+ */
+function forcedLocal(): boolean {
+  return import.meta.env["VITE_UPTIME_ADAPTER"] === "local";
+}
+
 export function createStore(): UptimeStore {
-  const config = supabaseConfigFromEnv();
+  const config = forcedLocal() ? null : supabaseConfigFromEnv();
   if (config) return new SupabaseStore(config, systemClock);
   return new LocalStore(systemClock);
 }
 
 export function isBackedByServer(): boolean {
-  return supabaseConfigFromEnv() !== null;
+  return !forcedLocal() && supabaseConfigFromEnv() !== null;
 }

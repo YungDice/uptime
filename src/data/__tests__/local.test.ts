@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { CHECK_IN_WINDOW, DAY, isRunning, statusOf, toDays } from "@/core";
+import { CHECK_IN_WINDOW, DAY, HOUR, MINUTE, isRunning, statusOf, toDays } from "@/core";
+import { liveGiveable } from "../store";
 import { LocalStore } from "../local";
 
 /** A clock the test drives, so sixty-day windows take no real time. */
@@ -39,7 +40,7 @@ describe("LocalStore", () => {
     clock = new TestClock(T0);
     sharedStorage = memoryStorage();
     store = new LocalStore(clock, sharedStorage);
-    await store.signIn("you");
+    await store.start("you");
   });
 
   it("signs in to a running streak and derives elapsed from the record", async () => {
@@ -187,7 +188,7 @@ describe("LocalStore", () => {
     // Drop the other side of the follow by unfollowing from their account.
     const other = (await store.refresh()).friends[0]!;
     const asThem = new LocalStore(clock, sharedStorage);
-    await asThem.signIn(other.profile.handle);
+    await asThem.start(other.profile.handle);
     await asThem.unfollow((await store.refresh()).me.id);
 
     const snap = await store.refresh();
@@ -234,17 +235,248 @@ describe("LocalStore", () => {
   it("survives a reload from storage", async () => {
     const storage = memoryStorage();
     const first = new LocalStore(clock, storage);
-    await first.signIn("you");
+    await first.start("you");
     await first.sendTime((await first.refresh()).friends[0]!.profile.id, DAY);
 
     const second = new LocalStore(clock, storage);
-    const snap = await second.signIn("you");
+    const snap = await second.start("you");
     expect(snap.totalSent).toBe(DAY);
   });
 
   it("works when storage is unavailable, as in a private window", async () => {
     const noStorage = new LocalStore(clock, null);
-    const snap = await noStorage.signIn("you");
+    const snap = await noStorage.start("you");
     expect(isRunning(snap.status)).toBe(true);
+  });
+});
+
+describe("LocalStore accounts", () => {
+  let clock: TestClock;
+  let store: LocalStore;
+
+  beforeEach(async () => {
+    clock = new TestClock(T0);
+    store = new LocalStore(clock, memoryStorage());
+    await store.start("you");
+  });
+
+  it("starts a seeded session already signed in", async () => {
+    const snap = await store.refresh();
+    expect(snap.account.isAnonymous).toBe(false);
+    expect(snap.account.email).toBe("you@example.com");
+  });
+
+  it("drops to a fresh anonymous clock on sign out", async () => {
+    const result = await store.signOut();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.snapshot.account.isAnonymous).toBe(true);
+    expect(result.snapshot.account.email).toBeNull();
+    // The app has to be usable without an account, so a clock still runs.
+    expect(isRunning(result.snapshot.status)).toBe(true);
+  });
+
+  it("refuses to send time while anonymous", async () => {
+    await store.signOut();
+    const snap = await store.refresh();
+    const friend = snap.friends[0];
+    // A fresh anonymous account follows nobody, so reach past the friend gate
+    // by naming a seeded id directly - the account check must fire first.
+    const result = await store.sendTime(friend?.profile.id ?? "u_mara", 3600);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/create an account/i);
+  });
+
+  it("refuses to revive while anonymous", async () => {
+    await store.signOut();
+    const result = await store.reviveFriend("u_jules");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/create an account/i);
+  });
+
+  it("leaves anonymous accounts off every leaderboard", async () => {
+    await store.signOut();
+    const snap = await store.refresh();
+    for (const board of ["current-streak", "longest-ever", "lifetime-total"] as const) {
+      const rows = await store.board(board);
+      expect(rows.some((r) => r.userId === snap.me.id)).toBe(false);
+    }
+    // The seeded cast still rank, so the board is not simply empty.
+    expect((await store.board("current-streak")).length).toBeGreaterThan(0);
+  });
+
+  it("carries the streak across an upgrade rather than starting over", async () => {
+    await store.signOut();
+    const before = await store.refresh();
+    const startedAt = before.me.streak.streakStart;
+    clock.advance(3 * DAY);
+
+    const result = await store.signUp("new@example.com", "longenough", "newcomer");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.snapshot.account.isAnonymous).toBe(false);
+    expect(result.snapshot.me.streak.streakStart).toBe(startedAt);
+    expect(result.snapshot.me.handle).toBe("newcomer");
+  });
+
+  it("ranks the account as soon as it is no longer anonymous", async () => {
+    await store.signOut();
+    await store.signUp("new@example.com", "longenough", "newcomer");
+    const snap = await store.refresh();
+    const rows = await store.board("current-streak");
+    expect(rows.some((r) => r.userId === snap.me.id)).toBe(true);
+  });
+
+  it("validates the email, the password and the handle", async () => {
+    await store.signOut();
+    expect((await store.signUp("nope", "longenough", "ok_handle")).ok).toBe(false);
+    expect((await store.signUp("a@b.co", "short", "ok_handle")).ok).toBe(false);
+    expect((await store.signUp("a@b.co", "longenough", "!!")).ok).toBe(false);
+  });
+
+  it("refuses a handle somebody already holds", async () => {
+    const result = await store.setHandle("mara");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/taken/i);
+  });
+
+  it("signs back in to the same account and its streak", async () => {
+    const before = await store.refresh();
+    await store.signOut();
+    const result = await store.signIn("you@example.com", "uptime-demo");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.snapshot.me.id).toBe(before.me.id);
+    expect(result.snapshot.me.streak.streakStart).toBe(before.me.streak.streakStart);
+  });
+
+  it("refuses a wrong password", async () => {
+    await store.signOut();
+    expect((await store.signIn("you@example.com", "wrong")).ok).toBe(false);
+  });
+
+  // --- the giveable figure -------------------------------------------------
+
+  it("grows the giveable figure continuously while the clock runs", async () => {
+    const before = await store.refresh();
+    const at = clock.now();
+    clock.advance(HOUR);
+
+    // No refresh in between. This is the whole point: the figure has to be
+    // right from a snapshot taken an hour ago, because on a running clock that
+    // is the only snapshot there is.
+    const grew = liveGiveable(before, at + HOUR) - liveGiveable(before, at);
+    expect(grew).toBe(HOUR / 10);
+  });
+
+  it("does not jump when the clock is stopped", async () => {
+    await store.refresh();
+    clock.advance(HOUR);
+    const running = await store.refresh();
+    const justBefore = liveGiveable(running, clock.now());
+
+    const stopped = await store.stopStreak();
+    expect(stopped.ok).toBe(true);
+    if (!stopped.ok) return;
+
+    // Stopping files the run into lifetimeSeconds, which is the same time the
+    // live figure was already counting - so the total must not move. The bug
+    // this stands against reported the figure leaping from 5 to 13 minutes on
+    // a stop, which was an hour of accrual arriving all at once because the
+    // display had been frozen at the last snapshot the whole time.
+    expect(liveGiveable(stopped.snapshot, clock.now())).toBe(justBefore);
+  });
+
+  it("agrees with the balance the adapter derives server-side", async () => {
+    const snap = await store.refresh();
+    expect(liveGiveable(snap, snap.serverNow)).toBe(snap.balance);
+  });
+
+  it("does not jump when a lapse is swept either", async () => {
+    // The window running out while the app is open flips the local status to
+    // lapsed before any sweep files the run. Read from the stale snapshot at
+    // that moment, and again from the swept one, the figure has to agree: the
+    // sweep credits the run up to lastSeen, which is precisely what the lapsed
+    // status was already reporting as its length.
+    const before = await store.refresh();
+    clock.advance(CHECK_IN_WINDOW + DAY);
+    const unswept = liveGiveable(before, clock.now());
+
+    const after = await store.refresh();
+    expect(liveGiveable(after, clock.now())).toBe(unswept);
+    // And it counts the run only up to the last sign of life, never through
+    // the grace window - vanishing must not earn the same as showing up. The
+    // gap between the two is one whole window's worth of accrual.
+    const throughTheWindow = Math.floor(
+      (before.me.lifetimeSeconds + (clock.now() - before.me.streak.streakStart!)) / 10,
+    );
+    expect(throughTheWindow - unswept).toBe(Math.floor((CHECK_IN_WINDOW + DAY) / 10));
+  });
+
+  // --- other people's profiles ---------------------------------------------
+
+  it("reads any account's public profile, connected or not", async () => {
+    const snap = await store.refresh();
+    const friend = snap.friends.find((f) => f.profile.handle === "mara");
+    expect(friend).toBeDefined();
+    if (!friend) return;
+
+    const profile = await store.profile(friend.profile.id);
+    expect(profile).not.toBeNull();
+    if (!profile) return;
+
+    expect(profile.profile.handle).toBe("mara");
+    expect(profile.connected).toBe(true);
+    expect(profile.iFollow).toBe(true);
+    expect(profile.followsMe).toBe(true);
+    // Their counter is derived from the record by the caller, exactly as the
+    // viewer's own is, so the raw timestamps have to survive the trip.
+    expect(profile.streak.streakStart).toBe(friend.streak.streakStart);
+    expect(profile.personalBest).toBeGreaterThan(0);
+  });
+
+  it("reports which way a one-sided follow points", async () => {
+    const snap = await store.refresh();
+    const ivo = snap.friends.find((f) => f.profile.handle === "ivo");
+    expect(ivo).toBeDefined();
+    if (!ivo) return;
+
+    const profile = await store.profile(ivo.profile.id);
+    expect(profile?.followsMe).toBe(true);
+    expect(profile?.iFollow).toBe(false);
+    expect(profile?.connected).toBe(false);
+  });
+
+  it("prices a revive on a stranger's profile the same way the list does", async () => {
+    const snap = await store.refresh();
+    const broken = snap.friends.find((f) => f.revive !== undefined);
+    expect(broken).toBeDefined();
+    if (!broken?.revive) return;
+
+    const profile = await store.profile(broken.profile.id);
+    expect(profile?.revive?.cost).toBe(broken.revive.cost);
+    expect(profile?.revive?.restores).toBe(broken.revive.restores);
+  });
+
+  it("returns null for an account that does not exist", async () => {
+    expect(await store.profile("u_nobody")).toBeNull();
+  });
+
+  // --- sending small amounts ------------------------------------------------
+
+  it("accepts a gift far smaller than a day", async () => {
+    const snap = await store.refresh();
+    const friend = snap.friends.find((f) => f.connected);
+    expect(friend).toBeDefined();
+    if (!friend) return;
+
+    // Five minutes. The send sheet used to offer one hour as its smallest
+    // preset, so this amount was unreachable through the interface even though
+    // every rule below it allows the gift.
+    const result = await store.sendTime(friend.profile.id, 5 * MINUTE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.snapshot.totalSent).toBe(5 * MINUTE);
   });
 });
