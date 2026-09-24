@@ -1,4 +1,4 @@
-import { sendable } from "@/core/economy";
+import { clockTime, sendable } from "@/core/economy";
 import { statusOf } from "@/core/streak";
 import type { BoardEntry, BoardId } from "@/core/leaderboards";
 import type { Gift } from "@/core/economy";
@@ -87,14 +87,24 @@ export interface Snapshot {
    */
   windowAnchor: Seconds;
   /**
-   * What this account could send at the moment of the snapshot: everything
-   * on its running clock, or nothing if the clock is stopped.
+   * What this account could send at the moment of the snapshot: all of its
+   * running clock with the whole-clock upgrade, a tenth of the run without,
+   * nothing if the clock is stopped.
    *
-   * There is no separate bank any more. Time you send comes straight off your
-   * timer and lands on theirs, so this is the clock read at `serverNow` - and,
-   * like the clock, it is stale the instant it arrives. Read `liveGiveable`.
+   * There is no separate bank. Time you send comes straight off your timer and
+   * lands on theirs, so this is derived from the clock read at `serverNow` -
+   * and, like the clock, it is stale the instant it arrives. Read
+   * `liveGiveable`.
    */
   balance: Seconds;
+  /**
+   * Whether this account bought the whole-clock upgrade: it may send
+   * everything on its clock, rather than six minutes for every hour.
+   *
+   * Belongs to the account, not the device or the run - it survives a reset,
+   * a sign-in elsewhere and a reinstall. It also lifts the daily sending cap.
+   */
+  sendsWholeClock: boolean;
   totalSent: Seconds;
   totalReceived: Seconds;
   sentInLastDay: Seconds;
@@ -115,11 +125,12 @@ export interface Snapshot {
 /**
  * The giveable total at an arbitrary instant, recomputed rather than read.
  *
- * Time you can send is your running clock itself, so this is simply the clock
- * derived against the ticking `now` - the same number the face shows, in whole
- * seconds. `Snapshot.balance` is that clock read at the moment the snapshot
- * was taken, and a snapshot is only taken when something happens, so reading
- * it directly would freeze the ceiling on a clock that is visibly still going.
+ * Time you can send comes off your running clock, so this is derived from the
+ * clock against the ticking `now`: all of it with the whole-clock upgrade, a
+ * tenth of the run without (see `sendable`). `Snapshot.balance` is the same
+ * figure at the moment the snapshot was taken, and a snapshot is only taken
+ * when something happens, so reading it directly would freeze the ceiling on
+ * a clock that is visibly still going.
  *
  * It errs low rather than high: the server evaluates the send a moment later
  * still, so an amount sized against this can never exceed what the server sees.
@@ -129,7 +140,23 @@ export interface Snapshot {
  * time that is already on its way into history.
  */
 export function liveGiveable(snapshot: Snapshot, now: Seconds): Seconds {
-  return sendable(statusOf(snapshot.me.streak, now));
+  return sendable(statusOf(snapshot.me.streak, now), {
+    sendsWholeClock: snapshot.sendsWholeClock,
+    sentThisRun: snapshot.me.streak.sentThisRun ?? 0,
+  });
+}
+
+/**
+ * Everything on your running clock at an arbitrary instant: what a revive can
+ * be paid with.
+ *
+ * Not `liveGiveable`. A revive is paid off the whole clock whether or not the
+ * account has the upgrade - the free share limits what you send, not what you
+ * spend - so asking whether a rescue is affordable against the share would
+ * grey out revives a free account can pay for.
+ */
+export function liveClock(snapshot: Snapshot, now: Seconds): Seconds {
+  return clockTime(statusOf(snapshot.me.streak, now));
 }
 
 /**
@@ -223,6 +250,11 @@ export interface Pulse {
   serverNow: Seconds;
   streakStart: Seconds | null;
   totalReceived: Seconds;
+  /**
+   * The other thing that changes without this device doing anything: a
+   * payment finishing in the browser, whose webhook unlocks the account.
+   */
+  sendsWholeClock: boolean;
 }
 
 /**
@@ -248,6 +280,17 @@ export const ANONYMOUS_LIMITS = [
 export type ActionResult =
   | { ok: true; snapshot: Snapshot; message: string }
   | { ok: false; message: string };
+
+/**
+ * Where buying the whole-clock upgrade goes next.
+ *
+ * Usually a payment page to open: the purchase finishes in the browser, and
+ * the account is unlocked by the payment provider telling the server, not by
+ * anything this device says - so the app learns about it the way it learns
+ * about a gift, on the next pulse. The local adapter has no payment provider
+ * behind it and answers with the unlocked snapshot directly.
+ */
+export type CheckoutResult = ActionResult | { ok: true; checkoutUrl: string; message: string };
 
 /**
  * The one thing the app talks to.
@@ -279,6 +322,13 @@ export interface UptimeStore {
   sendTime(toUserId: string, amount: Seconds): Promise<ActionResult>;
   /** Spend time off your own clock to bring a friend's lapsed streak back, halved. */
   reviveFriend(userId: string): Promise<ActionResult>;
+  /**
+   * Buy the right to send your whole clock rather than a tenth of it.
+   *
+   * A one-off payment, tied to the account - so an anonymous session is
+   * refused, the same as it is refused sending at all. See `CheckoutResult`.
+   */
+  buyWholeClock(): Promise<CheckoutResult>;
   /**
    * Follow someone by handle.
    *

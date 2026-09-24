@@ -1,11 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "desktop",
-  "description": "The desktop build can check for, install and restart into a newer version of itself.",
+  "description": "The desktop build can check for, install and restart into a newer version of itself, and hand a Stripe Checkout page - and only that - to the system browser.",
   "platforms": ["windows", "macOS", "linux"],
   "windows": ["main"],
   "permissions": [
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://checkout.stripe.com/*" }]
+    }
   ]
 }

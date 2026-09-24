@@ -13,6 +13,20 @@ export interface StreakRecord {
   streakStart: Seconds | null;
   /** Any sign of life: app open, push tap, gift sent or received. */
   lastSeen: Seconds;
+  /**
+   * How much has been sent as gifts out of the run now on this clock.
+   *
+   * A free account may send a tenth of what its run has held, and a gift moves
+   * `streakStart`, so the clock alone forgets what has already gone out of it.
+   * This remembers. It belongs to the run, not the account: every function
+   * here that begins or ends a run builds a record without it, which is how a
+   * new run starts from nothing sent - the SQL does the same with a trigger.
+   *
+   * Optional because only the owner's own record carries it (a friend's never
+   * does), and because worlds saved before it existed have none: read it as
+   * `?? 0`.
+   */
+  sentThisRun?: Seconds;
 }
 
 /** A finished run, kept forever so a reset never erases the record. */

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   DAY,
+  WHOLE_CLOCK_PRICE_LABEL,
   achievementsFor,
   formatDate,
   formatDuration,
@@ -21,7 +22,7 @@ import { Capsule, Row, Section } from "@/components/List";
 import { Avatar } from "@/components/Avatar";
 import { LiveTime } from "@/components/LiveTime";
 import { Medal } from "@/components/Medal";
-import { appVersion, updateLabel } from "@/updates/updater";
+import { appVersion, updateDetail, updateLabel, updateStore } from "@/updates/updater";
 import type { Updater } from "@/updates/useUpdater";
 
 interface Props {
@@ -35,6 +36,8 @@ interface Props {
   onSetHandle(handle: string): void;
   onSetDisplayName(name: string): void;
   onSetAvatar(file: File | null): void;
+  /** Start buying the whole-clock upgrade. Absent where it is not on offer. */
+  onBuyWholeClock?: () => void;
   updater: Updater;
 }
 
@@ -51,7 +54,8 @@ export function Account(props: Props) {
  * Which build this is, and on desktop, whether there is a newer one.
  *
  * The row is the manual half of the updater: it checks on launch by itself,
- * and this is where a user who heard about a release goes to ask for it.
+ * and this is where a user who heard about a release goes to ask for it. The
+ * phone apps are updated by their stores, so there the row only says which.
  */
 function AppSection({ updater }: { updater: Updater }) {
   const { state } = updater;
@@ -61,13 +65,23 @@ function AppSection({ updater }: { updater: Updater }) {
       : state.phase === "idle" || state.phase === "current" || state.phase === "failed"
         ? updater.check
         : undefined;
+  const detail = updateDetail(state);
+  const store = updateStore();
 
   return (
     <Section title="App">
       <Row label="Version" value={appVersion} />
-      {state.phase === "unsupported" ? null : (
-        <Row label="Updates" value={updateLabel(state)} {...(action ? { onClick: action } : {})} />
-      )}
+      {state.phase !== "unsupported" ? (
+        <Row
+          label="Updates"
+          value={updateLabel(state)}
+          tone={state.phase === "failed" ? "lapse" : "default"}
+          {...(detail ? { sub: detail } : {})}
+          {...(action ? { onClick: action } : {})}
+        />
+      ) : store ? (
+        <Row label="Updates" value={store} sub={`Uptime updates through ${store}.`} />
+      ) : null}
     </Section>
   );
 }
@@ -188,6 +202,7 @@ function SignedIn({
   onSetHandle,
   onSetDisplayName,
   onSetAvatar,
+  onBuyWholeClock,
 }: Props) {
   const { me, account } = snapshot;
   const [nickname, setNickname] = useState(me.handle);
@@ -292,7 +307,8 @@ function SignedIn({
           tone={placing !== null && placing.position <= 3 ? "run" : "default"}
         />
         <Stat label="Best run" value={formatDuration(snapshot.personalBest)} />
-        {/* Your running clock: sending takes time straight off it. */}
+        {/* What you may send off your running clock: all of it with the
+            upgrade, a tenth of the run without. */}
         <Stat
           label="Can send"
           tone="bank"
@@ -318,6 +334,37 @@ function SignedIn({
           value={formatDuration(snapshot.totalSent)}
           tone={snapshot.totalSent > 0 ? "bank" : "default"}
         />
+      </Section>
+
+      {/* Where this account stands on sending, and the one place that always
+          offers to change it - the other two offers only appear while there
+          is something to send. */}
+      <Section title="Sending">
+        {snapshot.sendsWholeClock ? (
+          <Row
+            label="You can send"
+            value="Your whole clock"
+            tone="bank"
+            sub="Unlocked for good on this account, with no daily limit."
+          />
+        ) : (
+          <>
+            <Row
+              label="You can send"
+              value="6 min per hour"
+              sub="Free accounts send a tenth of what their clock holds, up to 7 days a day."
+            />
+            {onBuyWholeClock ? (
+              <Row
+                label="Send your whole clock"
+                value={`Unlock ${WHOLE_CLOCK_PRICE_LABEL}`}
+                tone="run"
+                sub={`All of it, in one go if you like - no daily limit. One payment of ${WHOLE_CLOCK_PRICE_LABEL}, kept by your account on every device.`}
+                onClick={onBuyWholeClock}
+              />
+            ) : null}
+          </>
+        )}
       </Section>
 
       {/* Editing is folded away by default: the names are set once and then

@@ -33,11 +33,12 @@ a year of the server being asleep.
 | `src/hooks/` | `useSession` (owns store + clock + notices + the pulse), `useNow` / `useFractionalNow`. |
 | `src/notifications/` | Client half of the check-in prompt. |
 | `src/platform.ts` | Which platform the bundle is running on. |
+| `src/payments/` | Where the whole-clock upgrade can be bought, and opening Stripe Checkout. |
 | `src/components/ErrorBoundary.tsx` | The only thing standing between a render error and a black window. |
-| `supabase/migrations/` | `0001`–`0013`. The rules again, in SQL. |
+| `supabase/migrations/` | `0001`–`0014`. The rules again, in SQL. |
 | `supabase/deploy.sql` | Every migration concatenated, for the SQL editor. Generated: `npm run db:bundle`. |
 | `scripts/` | `build-deploy-sql.mjs`, which generates the above. |
-| `supabase/functions/` | `sweep-lapsed`, `nudge-check-in`. |
+| `supabase/functions/` | `sweep-lapsed`, `nudge-check-in`, and the payment pair `create-checkout` and `stripe-webhook`, sharing `_shared/stripe.ts`. |
 | `src-tauri/` | The native shell. One Rust crate for all platforms. |
 
 Import alias: `@/` → `src/`. Set in both `vite.config.ts` and `tsconfig.json` —
@@ -129,9 +130,13 @@ test standing behind it. Read this list before changing streak or ledger logic.
     back but a restart.
 
 12. **The giveable figure is derived on the client, not read off the snapshot.**
-    `liveGiveable(snapshot, now)` in `src/data/store.ts` - which is simply your
-    running clock (`sendable(status)`), zero when stopped or lapsed. Every
-    surface that offers to spend time takes it from the single call in `App`.
+    `liveGiveable(snapshot, now)` in `src/data/store.ts` - all of your running
+    clock with the whole-clock upgrade, a tenth of the run without
+    (`sendable`), zero when stopped or lapsed. Every surface that offers to
+    send takes it from the single call in `App`. What a revive can afford is a
+    different number, `liveClock`: a revive is paid off the whole clock
+    whatever the account, and testing it against the share would grey out
+    rescues a free account can pay for.
     `Snapshot.balance` is the clock read at the instant the snapshot was taken,
     and snapshots are only taken when something is pressed, so reading it
     would freeze the ceiling on a clock that is visibly still running.
@@ -182,10 +187,42 @@ test standing behind it. Read this list before changing streak or ledger logic.
 
 19. **An open app polls `uptime_pulse` every 30s; it is not a sign of life.**
     One primary-key read. `useSession` only re-reads the snapshot when the
-    pulse says the clock or the received total moved. Do not make the pulse
+    pulse says the clock, the received total or the whole-clock upgrade
+    changed - the last is how a payment finished in the browser reaches an
+    open app. Do not make the pulse
     touch `last_seen` - a tab left open is not a person - and do not replace it
     with a periodic full refresh, which multiplies the heaviest read by every
     open client.
+
+20. **The free share is a tenth of *clock + sent this run*, not of the clock.**
+    A gift moves `streak_start`, so the clock alone forgets what has been sent
+    out of it, and a tenth of the clock as it reads now can be walked down to
+    nothing a tenth at a time. `profiles.sent_this_run` (on the client,
+    `StreakRecord.sentThisRun`) remembers. It must be zero at the start of
+    every run: in SQL a trigger on `streak_start` resets it whenever a run
+    begins or ends, so no function that starts or files a run has to know;
+    in `core`, every function that builds a new run's record leaves it off,
+    while `touch`, `transfer` and `spend` carry it. A revive's price is not
+    counted in it.
+
+21. **Only Stripe's signed webhook can unlock an account.** `purchases` is
+    written by `uptime_grant_whole_clock`, callable by the service role alone,
+    from `stripe-webhook` after `verifySignature`. `create-checkout` takes the
+    account from the caller's token, never the body, and prices the session
+    itself; the success page is fixed server-side. Clients cannot read
+    `purchases` or ask who has paid - the snapshot and pulse say whether *you*
+    have. The webhook ignores any checkout not tagged `whole-clock`, because a
+    Stripe endpoint hears about everything sold on the account.
+
+22. **Three things must agree, or installed copies never update - silently.**
+    The repo releases are published to (`RELEASES_REPO`, default this repo),
+    `plugins.updater.endpoints` in `src-tauri/tauri.conf.json`, and the key
+    pair: `plugins.updater.pubkey` must match the `TAURI_SIGNING_PRIVATE_KEY`
+    secret. Until 2026-09-24 none of them lined up - the feed named a repo that
+    did not exist and the private key had never left the cloud session that
+    made it - and the Updates row could only ever say "Failed". `npm run
+    release` checks the first two; the third is only proven by an update
+    actually installing. Rotating the key strands every installed copy.
 
 ### The tunable numbers
 
@@ -195,9 +232,14 @@ Changing one is a one-line edit in each place:
 - `CHECK_IN_WINDOW` = 60 days — how long you may go unseen before lapsing.
 - `REVIVE_RESTORE_FRACTION` = 0.5 and `REVIVE_COST_PER_RESTORED_SECOND` = 0.1
   (SQL: `uptime_revive_cost_rate()`), paid off the reviver's clock.
-- `MAX_SENT_PER_DAY` = 7 days (rolling 24h cap). Also 120 sends an hour, SQL
-  only (`uptime_rate_ok('send_time', ...)`).
+- `MAX_SENT_PER_DAY` = 7 days (rolling 24h cap), free accounts only - the
+  whole-clock upgrade lifts it (`sendableToday`). Also 120 sends an hour for
+  everyone, SQL only (`uptime_rate_ok('send_time', ...)`).
 - `MIN_ACCOUNT_AGE_FOR_LEADERBOARD_CREDIT` = 14 days.
+- `FREE_SEND_SHARE` = 0.1 (SQL: `uptime_free_send_share()`, `0014`) - what a
+  free account may send, as a share of its run.
+- The upgrade's price: `UPGRADE_PRICE` in `supabase/functions/_shared/stripe.ts`
+  is what is charged; `WHOLE_CLOCK_PRICE_LABEL` is what the app says.
 
 These decide how the game feels and the README is explicit that they are
 guesses.
@@ -232,7 +274,7 @@ guesses.
 ```bash
 npm install
 npm run dev            # browser, http://localhost:1420
-npm test               # 100 tests, ~0.5s
+npm test               # 162 tests, ~0.5s
 npm run typecheck      # app, plus vite.config.ts against tsconfig.node.json
 npm run db:bundle      # regenerate supabase/deploy.sql after editing a migration
 npm run desktop:dev    # same app in a Tauri window
@@ -386,7 +428,8 @@ tools installed:
   The README flags this as the next thing worth designing.
 - **The name `Uptime`** is a working title, baked into the bundle identifier
   `com.yungdice.uptime`.
-- **No component tests.** The 100 tests cover `src/core` and the store only;
+- **No component tests.** The 162 tests cover `src/core`, the store, the updater and the
+  Stripe helper only;
   there is no DOM test environment installed (no jsdom, no Testing Library), so
   `useBackStack` and the screens are verified by driving a browser rather than
   by a test in the repo. Adding a DOM stack is a real decision, not an

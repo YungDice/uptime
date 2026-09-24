@@ -1,12 +1,11 @@
 name: Release
 
-# Builds the Windows installer, signs it for the updater, and publishes it to
-# the public releases repo that installed copies poll. This repo stays private;
-# only the installer and the update feed leave it.
+# Builds the Windows installers - Uptime_Installer.exe and Uptime_Installer.msi -
+# signs them for the updater, and publishes them as a GitHub release together
+# with latest.json, the feed installed copies poll.
 #
 # To ship a version:
-#   npm version patch        # bumps package.json, commits, tags vX.Y.Z
-#   git push --follow-tags
+#   npm run release          # tests, bumps package.json, tags vX.Y.Z, pushes
 #
 # One-time setup is in README.md, under "Releasing the desktop app".
 
@@ -24,13 +23,19 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  # The release is published into this repo with the workflow's own token.
+  contents: write
 
 jobs:
   windows:
     runs-on: windows-latest
     env:
-      RELEASES_REPO: ${{ vars.RELEASES_REPO || 'YungDice/uptime-releases' }}
+      # This repo, by default: it is public, so its release downloads are too.
+      # To publish somewhere else - a public repo, if this one is ever made
+      # private - set the RELEASES_REPO variable, add a RELEASES_TOKEN secret
+      # that can write to it, and point plugins.updater.endpoints in
+      # src-tauri/tauri.conf.json at it.
+      RELEASES_REPO: ${{ vars.RELEASES_REPO || github.repository }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,11 +45,15 @@ jobs:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          SAME_REPO: ${{ (vars.RELEASES_REPO || github.repository) == github.repository }}
         run: |
           missing=0
           [ -n "$KEY" ] || { echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY secret - see README.md, Releasing the desktop app."; missing=1; }
           [ -n "$PASSWORD" ] || { echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY_PASSWORD secret - see README.md, Releasing the desktop app."; missing=1; }
-          [ -n "$TOKEN" ] || { echo "::error::Add the RELEASES_TOKEN secret - see README.md, Releasing the desktop app."; missing=1; }
+          if [ "$SAME_REPO" != "true" ] && [ -z "$TOKEN" ]; then
+            echo "::error::RELEASES_REPO is $RELEASES_REPO, so a RELEASES_TOKEN secret that can write to it is needed."
+            missing=1
+          fi
           exit $missing
 
       - name: Check the tag matches package.json
@@ -81,9 +90,9 @@ jobs:
           # fine; a secret works too.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
-        run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.release.conf.json
+        run: npm run tauri -- build --bundles nsis,msi --config src-tauri/tauri.release.conf.json
 
-      - name: Stage Uptime_Installer.exe and latest.json
+      - name: Stage the installers and latest.json
         env:
           RELEASE_NOTES: ${{ inputs.notes }}
         run: node scripts/stage-release.mjs
@@ -91,7 +100,7 @@ jobs:
       - name: Publish
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
           NOTES: ${{ inputs.notes }}
         run: |
           version="$(node -p "require('./package.json').version")"
@@ -99,13 +108,34 @@ jobs:
             echo "::error::v$version is already published in $RELEASES_REPO. Bump the version to ship again."
             exit 1
           fi
-          # Marked latest, so releases/latest/download/* - the installer link
+
+          notes="$NOTES"
+          if [ -z "$notes" ]; then
+            notes="$(printf '%s\n' \
+              "Uptime $version for Windows." \
+              "" \
+              "- **Uptime_Installer.exe** - the one to download." \
+              "- **Uptime_Installer.msi** - the same app as a Windows Installer package." \
+              "" \
+              "Already installed? It updates itself: Account > App > Updates.")"
+          fi
+
+          # A tag pushed by npm run release already exists here; a manual run
+          # tags the commit it built. Publishing elsewhere, the tag is created
+          # there instead.
+          target=()
+          if [ "$RELEASES_REPO" = "$GITHUB_REPOSITORY" ]; then target=(--target "$GITHUB_SHA"); fi
+
+          # Marked latest, so releases/latest/download/* - the download links
           # and the updater's feed - move to this build together.
-          gh release create "v$version" release/Uptime_Installer.exe release/latest.json \
+          gh release create "v$version" \
+            release/Uptime_Installer.exe release/Uptime_Installer.msi release/latest.json \
             --repo "$RELEASES_REPO" \
+            "${target[@]}" \
             --title "Uptime $version" \
-            --notes "${NOTES:-Uptime $version}" \
+            --notes "$notes" \
             --latest
+          echo "Published https://github.com/$RELEASES_REPO/releases/tag/v$version"
 
       - uses: actions/upload-artifact@v4
         with:

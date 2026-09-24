@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { createStore, isBackedByServer, liveGiveable, type SendTarget } from "@/data";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  createStore,
+  isBackedByServer,
+  liveClock,
+  liveGiveable,
+  type CheckoutResult,
+  type SendTarget,
+} from "@/data";
 import { useSession } from "@/hooks/useSession";
 import { useBackStack } from "@/hooks/useBackStack";
 import { Home } from "@/screens/Home";
@@ -12,6 +19,7 @@ import { SendSheet } from "@/components/SendSheet";
 import { Shell } from "@/components/Shell";
 import { UpdateOffer } from "@/components/UpdateOffer";
 import { useUpdater } from "@/updates/useUpdater";
+import { canBuyHere, openCheckout } from "@/payments/checkout";
 import { formatDuration } from "@/core";
 import type { Tab } from "@/components/TabBar";
 import markUrl from "../brand/mark.svg";
@@ -26,6 +34,8 @@ export function App() {
   const [confirmingStop, setConfirmingStop] = useState(false);
   const [trailingTo, setTrailingTo] = useState<string | null>(null);
   const [justCheckedIn, setJustCheckedIn] = useState(false);
+  /** A checkout being started, so a second tap does not open a second page. */
+  const buying = useRef(false);
 
   // What Android's back button unwinds, innermost first: any sheet, then the
   // profile behind it, then the tab, then the app itself. Without this, back
@@ -41,6 +51,31 @@ export function App() {
       else setTab("clock");
     },
   );
+
+  // Stripe sends a browser that paid, or gave up, back to CHECKOUT_RETURN_URL
+  // with `?checkout=`. When that page is this app, say what happened - once
+  // there is a screen to say it on - and take the parameter off the address,
+  // so a reload does not say it again.
+  const ready = session.snapshot !== null;
+  const { announce } = session;
+  useEffect(() => {
+    if (!ready) return;
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("checkout");
+    if (outcome === null) return;
+    params.delete("checkout");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (query ? `?${query}` : "") + window.location.hash,
+    );
+    if (outcome === "done") {
+      announce("good", "Payment received. Your whole clock unlocks here as soon as Stripe confirms it.");
+    } else {
+      announce("bad", "Payment cancelled. Nothing was charged.");
+    }
+  }, [ready, announce]);
 
   // The notice is a one-line confirmation, not a dialog; it clears itself.
   useEffect(() => {
@@ -74,10 +109,47 @@ export function App() {
 
   // One derivation, one place. Every surface that offers to spend time - the
   // home panel, the friend rows, the send sheet, the profile - has to agree
-  // about how much there is. It is your running clock, so it is moving, and
-  // they cannot each ask the snapshot separately and get the same answer.
+  // about how much there is. It comes off your running clock, so it is moving,
+  // and they cannot each ask the snapshot separately and get the same answer.
   const giveable = liveGiveable(snapshot, session.now);
+  // Not the same number on a free account: its share limits what it sends, but
+  // a revive is paid off the whole clock. See liveClock.
+  const spendable = liveClock(snapshot, session.now);
   const stoppedAfter = snapshot.me.streak.streakStart;
+
+  // Offered only where it can be bought (not in the phone builds - see
+  // canBuyHere) and only to an account that has not bought it yet.
+  const canUnlock = canBuyHere() && !snapshot.sendsWholeClock;
+
+  // Not through `session.run`: the usual answer is a page to open rather than
+  // a snapshot, and the unlock itself arrives later, on the pulse.
+  const buyWholeClock = async () => {
+    if (buying.current) return;
+    buying.current = true;
+    try {
+      let result: CheckoutResult;
+      try {
+        result = await store.buyWholeClock();
+      } catch (err) {
+        session.announce("bad", err instanceof Error ? err.message : "Could not start the payment.");
+        return;
+      }
+      if ("checkoutUrl" in result) {
+        try {
+          await openCheckout(result.checkoutUrl);
+          session.announce("good", result.message);
+        } catch {
+          session.announce("bad", "Could not open your browser for the payment page.");
+        }
+        return;
+      }
+      // A refusal, or the local adapter unlocking on the spot: an ordinary
+      // action result, applied like any other.
+      await session.run(async () => result);
+    } finally {
+      buying.current = false;
+    }
+  };
 
   // Tapping your own name on a board or in a list goes to the Account tab
   // rather than to a read-only copy of it: the page that can change those
@@ -153,6 +225,7 @@ export function App() {
           onSend={() => setTab("people")}
           onRevive={() => setTab("people")}
           onOpenAccount={() => setTab("account")}
+          {...(canUnlock ? { onUnlock: () => void buyWholeClock() } : {})}
         />
       ) : null}
 
@@ -160,6 +233,7 @@ export function App() {
         <People
           friends={snapshot.friends}
           giveable={giveable}
+          spendable={spendable}
           anonymous={snapshot.account.isAnonymous}
           onOpenAccount={() => setTab("account")}
           now={session.now}
@@ -194,6 +268,7 @@ export function App() {
           onSignOut={() => void session.run(() => store.signOut())}
           onSetHandle={(handle) => void session.run(() => store.setHandle(handle))}
           onSetDisplayName={(name) => void session.run(() => store.setDisplayName(name))}
+          {...(canBuyHere() ? { onBuyWholeClock: () => void buyWholeClock() } : {})}
           updater={updater}
         />
       ) : null}
@@ -220,8 +295,11 @@ export function App() {
         <SendSheet
           friend={sending}
           giveable={giveable}
+          clock={spendable}
+          sendsWholeClock={snapshot.sendsWholeClock}
           now={session.now}
           sentToday={snapshot.sentInLastDay}
+          {...(canUnlock ? { onUnlock: () => void buyWholeClock() } : {})}
           onCancel={() => setSending(null)}
           onConfirm={(amount) => void confirmSend(amount)}
         />

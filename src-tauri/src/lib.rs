@@ -12,10 +12,17 @@ pub fn run() {
 
     // The desktop build updates itself from the signed feed named in
     // tauri.conf.json; the phones get theirs from the stores.
+    //
+    // The opener hands the Stripe Checkout page to the system browser: the
+    // app's own window must never navigate away from the app, and a card form
+    // belongs in the browser the user trusts. Desktop only, because the phone
+    // stores require their own billing for digital upgrades, so the phone
+    // builds do not sell one (see `canBuyHere` in src/payments/checkout.ts).
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init());
 
     builder
         .invoke_handler(tauri::generate_handler![notification_permission])

@@ -28,6 +28,8 @@ export interface Session {
   clock: Clock;
   notice: Notice | null;
   dismissNotice(): void;
+  /** Show a one-line notice that no action produced - a return from checkout. */
+  announce(tone: Notice["tone"], text: string): void;
   run(action: () => Promise<ActionResult>): Promise<boolean>;
   reload(): Promise<void>;
 }
@@ -133,8 +135,9 @@ export function useSession(store: UptimeStore, handle: string): Session {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [reload]);
 
-  // Time sent to this account lands on its clock server-side. Ask cheaply
-  // whether that happened, and only pay for a full read when it did.
+  // Time sent to this account lands on its clock server-side, and a payment
+  // finished in the browser unlocks it server-side. Ask cheaply whether either
+  // happened, and only pay for a full read when one did.
   const ready = snapshot !== null;
   useEffect(() => {
     if (!ready) return;
@@ -148,9 +151,14 @@ export function useSession(store: UptimeStore, handle: string): Session {
         const pulse = await store.pulse();
         clock.syncTo(pulse.serverNow);
         const received = pulse.totalReceived - seen.totalReceived;
-        if (pulse.streakStart !== seen.me.streak.streakStart || received !== 0) {
+        // Coerced, because a server a migration behind sends no flag at all,
+        // and undefined !== false would re-read the snapshot on every beat.
+        const unlockChanged = Boolean(pulse.sendsWholeClock) !== Boolean(seen.sendsWholeClock);
+        if (pulse.streakStart !== seen.me.streak.streakStart || received !== 0 || unlockChanged) {
           await reload();
-          if (received > 0) {
+          if (unlockChanged && pulse.sendsWholeClock) {
+            say("good", "Payment received. You can send your whole clock now.");
+          } else if (received > 0) {
             say("good", `${formatDuration(received)} was sent to you. It's on your clock now.`);
           }
         }
@@ -196,6 +204,7 @@ export function useSession(store: UptimeStore, handle: string): Session {
     clock,
     notice,
     dismissNotice,
+    announce: say,
     run,
     reload,
   };

@@ -2,12 +2,13 @@ import { useState } from "react";
 import {
   DAY,
   HOUR,
-  MAX_SENT_PER_DAY,
   MINUTE,
+  WHOLE_CLOCK_PRICE_LABEL,
   checkGift,
   formatDuration,
   formatElapsed,
   isRunning,
+  sendableToday,
   statusOf,
   type Seconds,
 } from "@/core";
@@ -23,13 +24,21 @@ interface Props {
    * know about the other.
    */
   friend: SendTarget;
-  /** Your running clock, recomputed by the caller on every tick. */
+  /**
+   * What you may send off your running clock - all of it with the upgrade, a
+   * tenth of the run without - recomputed by the caller on every tick.
+   */
   giveable: Seconds;
+  /** Everything on your running clock, which `giveable` is a share of. */
+  clock: Seconds;
+  sendsWholeClock: boolean;
   /** Whole seconds, so their clock is judged running against the same tick. */
   now: Seconds;
   sentToday: Seconds;
   onCancel(): void;
   onConfirm(amount: Seconds): void;
+  /** Start buying the whole-clock upgrade. Absent where it is not on offer. */
+  onUnlock?: () => void;
 }
 
 /** Round amounts, offered only when there is enough to cover them. */
@@ -54,11 +63,21 @@ const PRESETS: Seconds[] = [5 * MINUTE, HOUR, 6 * HOUR, DAY, 7 * DAY];
  * your running clock and adds it to theirs, which is why the sheet opens on a
  * modest hour rather than on half of everything you have kept.
  */
-export function SendSheet({ friend, giveable, now, sentToday, onCancel, onConfirm }: Props) {
+export function SendSheet({
+  friend,
+  giveable,
+  clock,
+  sendsWholeClock,
+  now,
+  sentToday,
+  onCancel,
+  onConfirm,
+  onUnlock,
+}: Props) {
   // The rolling cap is part of the ceiling, not a refusal after the fact. A
   // slider that lets you pick an amount the server will reject is a worse
-  // control than one that cannot reach it.
-  const allowance = Math.max(0, MAX_SENT_PER_DAY - sentToday);
+  // control than one that cannot reach it. Unlimited with the upgrade.
+  const allowance = sendableToday(sentToday, sendsWholeClock);
   const max = Math.min(giveable, allowance);
 
   const [chosen, setChosen] = useState<Seconds>(() => Math.min(HOUR, max));
@@ -70,8 +89,10 @@ export function SendSheet({ friend, giveable, now, sentToday, onCancel, onConfir
   const step = stepFor(max);
 
   const check = checkGift(amount, {
+    senderClock: clock,
     senderBalance: giveable,
     sentInLastDay: sentToday,
+    sendsWholeClock,
     connected: friend.connected,
     isSelf: false,
     recipientRunning: isRunning(statusOf(friend.streak, now)),
@@ -144,10 +165,24 @@ export function SendSheet({ friend, giveable, now, sentToday, onCancel, onConfir
       <p className="mt-4 text-footnote text-label-2">
         {max <= 0 && allowance <= 0
           ? "You've hit today's sending limit. It resets on a rolling 24 hours."
-          : max <= 0
-            ? "Nothing to send yet. Your clock has to be running with time on it."
-            : `This comes off your own clock and is added to ${friend.profile.displayName}'s.`}
+          : max <= 0 && clock > 0 && !sendsWholeClock
+            ? "You've sent all a free account can from this clock: 6 minutes for every hour on it."
+            : max <= 0
+              ? "Nothing to send yet. Your clock has to be running with time on it."
+              : `This comes off your own clock and is added to ${friend.profile.displayName}'s.` +
+                (sendsWholeClock ? "" : " Free accounts send 6 minutes for every hour on the clock.")}
       </p>
+
+      {onUnlock && !sendsWholeClock ? (
+        <button
+          type="button"
+          onClick={onUnlock}
+          className="mt-2 block text-left text-footnote text-label-2"
+        >
+          Send your whole clock instead.{" "}
+          <span className="text-run">Unlock it for {WHOLE_CLOCK_PRICE_LABEL}</span>
+        </button>
+      ) : null}
 
       {/* A stopped recipient is refused whatever the amount, so it is said even
           at zero - otherwise the sheet would just sit with a dead Send button. */}

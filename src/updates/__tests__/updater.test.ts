@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  failureReason,
   fetchUpdate,
   installUpdate,
+  updateDetail,
   updateLabel,
   type DownloadEvent,
   type PendingUpdate,
@@ -150,5 +152,35 @@ describe("updateLabel", () => {
     );
     expect(updateLabel({ phase: "ready", version: "0.2.0" })).toBe("Restart for 0.2.0");
     expect(updateLabel({ phase: "failed", message: "x" })).toBe("Failed - try again");
+  });
+});
+
+describe("why an update failed", () => {
+  it("says a missing release is a missing release, not a broken button", () => {
+    expect(failureReason("Could not fetch a valid release JSON from the remote")).toMatch(
+      /No update feed was found/,
+    );
+  });
+
+  it("names a key mismatch and what to do about it", () => {
+    expect(failureReason("The signature was created with a different key than the one provided")).toMatch(
+      /not signed with this app's key/,
+    );
+  });
+
+  it("names a connection problem", () => {
+    expect(failureReason("error sending request for url (https://github.com/...)")).toMatch(
+      /Could not reach GitHub/,
+    );
+  });
+
+  it("passes anything else through as it came", () => {
+    expect(failureReason("Disk full")).toBe("Disk full");
+  });
+
+  it("puts the reason under the row only when there is one", () => {
+    expect(updateDetail({ phase: "failed", message: "Disk full" })).toBe("Disk full");
+    expect(updateDetail({ phase: "ready", version: "0.2.0" })).toMatch(/Downloaded/);
+    expect(updateDetail({ phase: "current" })).toBeNull();
   });
 });

@@ -66,9 +66,13 @@ language on all three rather than per-OS native conventions.
   truth. It can drift by seconds.
 - A streak ends only by lapsing (60 days without a sign of life), by a deliberate
   reset, or by a voluntary stop. Every past run is kept forever.
-- What a user can send is their own running clock. Sending takes the time off
-  the sender's timer and adds it to the recipient's; receiving adds to yours.
-  Only a running clock can send or receive - a lapsed one is revived instead.
+- What a user can send comes off their own running clock. Sending takes the
+  time off the sender's timer and adds it to the recipient's; receiving adds to
+  yours. Only a running clock can send or receive - a lapsed one is revived
+  instead.
+- A free account can send 6 minutes for every hour on its clock. The
+  whole-clock upgrade, a one-off $5 purchase through Stripe, lets it send all
+  of it. Not sold inside the phone apps, where store billing rules apply.
 - Reviving a broken streak restores half its lost length, paid off the
   reviver's clock at a tenth of what it restores. A headline rescue costs a
   real piece of the rescuer's own run.

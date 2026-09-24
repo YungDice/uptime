@@ -25,3 +25,8 @@ enable_signup = true
 
 [functions.sweep-lapsed]
 verify_jwt = false
+
+# Stripe calls this with no Supabase session to send. The request is checked
+# against STRIPE_WEBHOOK_SECRET instead - see the function's header.
+[functions.stripe-webhook]
+verify_jwt = false

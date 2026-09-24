@@ -4,6 +4,7 @@ import { systemClock, type BoardEntry, type BoardId, type Clock, type Seconds } 
 import type {
   Account,
   ActionResult,
+  CheckoutResult,
   PublicProfile,
   Pulse,
   RankInfo,
@@ -280,6 +281,30 @@ export class SupabaseStore implements UptimeStore {
     return this.action("uptime_revive", { p_user: userId });
   }
 
+  /**
+   * Ask the `create-checkout` Edge Function for a Stripe Checkout page.
+   *
+   * Nothing is unlocked here. The price, the account it is for and the unlock
+   * itself all live on the server: the function names the account from the
+   * session's own token, and only Stripe's signed webhook records the payment.
+   * An open app finds out on its next pulse.
+   */
+  async buyWholeClock(): Promise<CheckoutResult> {
+    const { data, error } = await this.client.functions.invoke<{ url?: string; error?: string }>(
+      "create-checkout",
+      { method: "POST" },
+    );
+    if (error) return { ok: false, message: await functionError(error) };
+    if (typeof data?.url !== "string") {
+      return { ok: false, message: data?.error ?? "The payment page did not come back. Try again." };
+    }
+    return {
+      ok: true,
+      checkoutUrl: data.url,
+      message: "Finish paying in your browser. Your whole clock unlocks here as soon as it goes through.",
+    };
+  }
+
   async follow(handle: string): Promise<ActionResult> {
     return this.action("uptime_follow", { p_handle: handle });
   }
@@ -356,6 +381,29 @@ function handleFor(userId: string, preferred: string): string {
   const stem = preferred.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 10) || "user";
   const suffix = userId.replace(/-/g, "").slice(0, 8);
   return `${stem}_${suffix}`;
+}
+
+/**
+ * The message an Edge Function refused with, in its own words.
+ *
+ * supabase-js reports any non-2xx answer as "Edge Function returned a non-2xx
+ * status code" and leaves the body - where the function explains itself, "create
+ * an account first", "already unlocked" - on the raw response.
+ */
+async function functionError(error: { message: string; context?: unknown }): Promise<string> {
+  const response = error.context;
+  if (response instanceof Response) {
+    if (response.status === 404) {
+      return "Payments aren't set up on this server yet: the create-checkout function is not deployed.";
+    }
+    try {
+      const body = (await response.json()) as { error?: unknown };
+      if (typeof body.error === "string") return body.error;
+    } catch {
+      // Not JSON; fall through to the generic message.
+    }
+  }
+  return "Could not start the payment. Try again in a moment.";
 }
 
 /**

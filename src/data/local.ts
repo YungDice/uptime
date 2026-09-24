@@ -3,6 +3,7 @@ import {
   DAY,
   buildBoard,
   checkGift,
+  clockTime,
   endRun,
   isRunning,
   reviveCost,
@@ -29,6 +30,7 @@ import {
 import { prepareAvatar, toDataUrl } from "./image";
 import type {
   ActionResult,
+  CheckoutResult,
   FriendView,
   PublicProfile,
   Pulse,
@@ -59,6 +61,14 @@ interface World {
    * send them anything until they follow you.
    */
   follows: string[];
+  /**
+   * Accounts that bought the whole-clock upgrade.
+   *
+   * Optional because worlds saved before it existed have none. There is no
+   * payment provider behind this adapter, so buying here just adds the id -
+   * see `buyWholeClock`.
+   */
+  sendsWholeClock?: string[];
 }
 
 function followKey(follower: string, followee: string): string {
@@ -136,6 +146,7 @@ export class LocalStore implements UptimeStore {
       serverNow: this.clock.now(),
       streakStart: me.streak.streakStart,
       totalReceived: totalReceived(this.world.gifts, me.id),
+      sendsWholeClock: this.sendsWholeClock(me.id),
     };
   }
 
@@ -212,8 +223,10 @@ export class LocalStore implements UptimeStore {
     }
 
     const check = checkGift(amount, {
+      senderClock: clockTime(statusOf(me.streak, now)),
       senderBalance: this.sendableOf(me, now),
       sentInLastDay: sentInLastDay(this.world.gifts, me.id, now),
+      sendsWholeClock: this.sendsWholeClock(me.id),
       connected: this.connected(me.id, toUserId),
       isSelf: me.id === toUserId,
       recipientRunning: isRunning(statusOf(recipient.streak, now)),
@@ -238,7 +251,7 @@ export class LocalStore implements UptimeStore {
     });
     // The time itself moves: off the sender's clock, onto the recipient's.
     // Both are touched inside `transfer`, since sending and receiving are each
-    // a sign of life.
+    // a sign of life, and the sender's run counts what went out of it.
     const moved = transfer(me.streak, recipient.streak, amount, now);
     me.streak = moved.from;
     recipient.streak = moved.to;
@@ -279,7 +292,9 @@ export class LocalStore implements UptimeStore {
     if (!isRunning(statusOf(me.streak, now))) {
       return { ok: false, message: "Your clock isn't running, so there's no time to pay with." };
     }
-    if (cost > this.sendableOf(me, now)) {
+    // The whole clock, not the free share: the share limits what is sent,
+    // and a revive is paid.
+    if (cost > clockTime(statusOf(me.streak, now))) {
       return { ok: false, message: "Not enough time on your clock for this rescue." };
     }
 
@@ -306,6 +321,37 @@ export class LocalStore implements UptimeStore {
       snapshot: this.snapshot(),
       message:
         "You brought " + friend.displayName + " back at " + Math.floor(restores / DAY) + " days.",
+    };
+  }
+
+  /**
+   * Unlock the whole clock, without a payment.
+   *
+   * This adapter stands in for a backend nobody has set up, so there is no
+   * payment provider to send anyone to. Everything it holds lives in this
+   * browser and every other account in it is the seeded cast, so granting it
+   * outright costs nobody anything - and it is what lets the unlocked states
+   * be seen and tested before Stripe exists. The rules it unlocks are the real
+   * ones.
+   */
+  async buyWholeClock(): Promise<CheckoutResult> {
+    this.syncFromStorage();
+    const me = this.me();
+    if (this.isAnonymous(me.id)) {
+      return {
+        ok: false,
+        message: "Create an account first. The upgrade belongs to it, and your streak carries over.",
+      };
+    }
+    if (this.sendsWholeClock(me.id)) {
+      return { ok: false, message: "You can already send your whole clock." };
+    }
+    (this.world.sendsWholeClock ??= []).push(me.id);
+    this.persist();
+    return {
+      ok: true,
+      snapshot: this.snapshot(),
+      message: "Unlocked - you can send your whole clock. (On-device mode: no payment was taken.)",
     };
   }
 
@@ -591,9 +637,16 @@ export class LocalStore implements UptimeStore {
     );
   }
 
-  /** Everything on the running clock. See `sendable`. */
+  private sendsWholeClock(userId: string): boolean {
+    return this.world.sendsWholeClock?.includes(userId) ?? false;
+  }
+
+  /** What this user may send right now. See `sendable`. */
   private sendableOf(user: UserState, now: Seconds): Seconds {
-    return sendable(statusOf(user.streak, now));
+    return sendable(statusOf(user.streak, now), {
+      sendsWholeClock: this.sendsWholeClock(user.id),
+      sentThisRun: user.streak.sentThisRun ?? 0,
+    });
   }
 
   /**
@@ -659,6 +712,7 @@ export class LocalStore implements UptimeStore {
       serverNow: now,
       windowAnchor: this.anchor ?? me.streak.lastSeen,
       balance: this.sendableOf(me, now),
+      sendsWholeClock: this.sendsWholeClock(me.id),
       totalSent: totalSent(this.world.gifts, me.id),
       totalReceived: totalReceived(this.world.gifts, me.id),
       sentInLastDay: sentInLastDay(this.world.gifts, me.id, now),

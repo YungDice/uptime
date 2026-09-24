@@ -57,9 +57,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4RDdCREU0OEExQ0QyOUUKUldTZTBoeUs1TDNYR0UvbU5KbmM2dEZVK0dvcVpNY2xRVTB1ZkJUYkZ2dFBUUVR1azBPUjBrNkQK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM2REI4QzkxNzMyQ0IyQzAKUldUQXNpeHprWXpieGcycGdqUklDRWF6akYrVlFUby9McnlodWFYZGV4aFhyV0xMMjg3U0pYcVoK",
       "endpoints": [
-        "https://github.com/YungDice/uptime-releases/releases/latest/download/latest.json"
+        "https://github.com/YungDice/uptime/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

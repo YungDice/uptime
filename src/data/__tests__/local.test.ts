@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { CHECK_IN_WINDOW, DAY, HOUR, MINUTE, isRunning, statusOf, toDays } from "@/core";
-import { liveGiveable } from "../store";
+import { liveClock, liveGiveable } from "../store";
 import { LocalStore } from "../local";
 
 /** A clock the test drives, so sixty-day windows take no real time. */
@@ -119,9 +119,14 @@ describe("LocalStore", () => {
   });
 
   it("refuses to send more than the clock has on it", async () => {
-    const snap = await store.refresh();
-    const friend = snap.friends[0]!;
-    const result = await store.sendTime(friend.profile.id, snap.balance + DAY);
+    // Unlocked, so neither the share nor the daily cap applies, on a two-day
+    // clock: only the clock itself can refuse a three-day gift.
+    await store.buyWholeClock();
+    const friend = (await store.refresh()).friends[0]!;
+    await store.stopStreak();
+    await store.startStreak();
+    clock.advance(2 * DAY);
+    const result = await store.sendTime(friend.profile.id, 3 * DAY);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toMatch(/more than your clock/i);
   });
@@ -161,7 +166,9 @@ describe("LocalStore", () => {
 
     const after = await store.refresh();
     expect(after.me.streak.streakStart).toBe(before.me.streak.streakStart! - 3 * HOUR);
-    expect(after.balance).toBe(before.balance + 3 * HOUR);
+    // Received time is on the clock like any other, so a free account can
+    // pass on a tenth of it.
+    expect(after.balance).toBe(before.balance + (3 * HOUR) / 10);
   });
 
   it("does not treat a pulse as a sign of life", async () => {
@@ -216,9 +223,11 @@ describe("LocalStore", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    // Paid off the reviver's own clock.
-    expect(result.snapshot.balance).toBe(before.balance - cost);
+    // Paid off the reviver's own clock - the whole of it, not the free share -
+    // and not counted as sent.
     expect(result.snapshot.me.streak.streakStart).toBe(before.me.streak.streakStart! + cost);
+    expect(liveClock(result.snapshot, clock.now())).toBe(liveClock(before, clock.now()) - cost);
+    expect(result.snapshot.me.streak.sentThisRun ?? 0).toBe(0);
 
     const revived = result.snapshot.friends.find((f) => f.profile.id === broken.profile.id)!;
     const status = statusOf(revived.streak, clock.now());
@@ -315,10 +324,13 @@ describe("LocalStore", () => {
 describe("LocalStore accounts", () => {
   let clock: TestClock;
   let store: LocalStore;
+  /** Shared, so a second account can act on the same world. */
+  let storage: Storage;
 
   beforeEach(async () => {
     clock = new TestClock(T0);
-    store = new LocalStore(clock, memoryStorage());
+    storage = memoryStorage();
+    store = new LocalStore(clock, storage);
     await store.start("you");
   });
 
@@ -420,13 +432,25 @@ describe("LocalStore accounts", () => {
 
   // --- the giveable figure -------------------------------------------------
 
-  it("is the running clock itself, so it grows second for second", async () => {
+  it("grows six minutes for every hour the clock runs", async () => {
     const before = await store.refresh();
     const at = clock.now();
     clock.advance(HOUR);
 
     // No refresh in between: the figure has to be right from a snapshot taken
     // an hour ago, because on a running clock that is the only one there is.
+    expect(liveGiveable(before, at + HOUR) - liveGiveable(before, at)).toBe(6 * MINUTE);
+    expect(liveGiveable(before, at + HOUR)).toBe(
+      Math.floor((at + HOUR - before.me.streak.streakStart!) / 10),
+    );
+  });
+
+  it("is the running clock itself with the upgrade, so it grows second for second", async () => {
+    expect((await store.buyWholeClock()).ok).toBe(true);
+    const before = await store.refresh();
+    const at = clock.now();
+    clock.advance(HOUR);
+
     expect(liveGiveable(before, at + HOUR) - liveGiveable(before, at)).toBe(HOUR);
     expect(liveGiveable(before, at + HOUR)).toBe(at + HOUR - before.me.streak.streakStart!);
   });
@@ -458,6 +482,121 @@ describe("LocalStore accounts", () => {
 
     const after = await store.refresh();
     expect(liveGiveable(after, clock.now())).toBe(0);
+  });
+
+  // --- the free share and the whole-clock upgrade --------------------------
+
+  /** A signed-up account on a fresh clock, following and followed by the cast. */
+  async function freshAccount(): Promise<LocalStore> {
+    const fresh = new LocalStore(clock, storage);
+    await fresh.start("newbie");
+    await fresh.signUp("newbie@example.com", "longenough", "newbie");
+    return fresh;
+  }
+
+  it("lets a free account send a tenth of its clock and no more", async () => {
+    const fresh = await freshAccount();
+    clock.advance(10 * HOUR);
+    const snap = await fresh.refresh();
+    expect(snap.sendsWholeClock).toBe(false);
+    expect(snap.balance).toBe(HOUR);
+
+    const mara = snap.friends.find((f) => f.profile.handle === "mara")!;
+    const over = await fresh.sendTime(mara.profile.id, HOUR + MINUTE);
+    expect(over.ok).toBe(false);
+    if (!over.ok) expect(over.message).toMatch(/6 minutes for every hour/);
+
+    expect((await fresh.sendTime(mara.profile.id, HOUR)).ok).toBe(true);
+    const spent = await fresh.sendTime(mara.profile.id, MINUTE);
+    expect(spent.ok).toBe(false);
+    if (!spent.ok) expect(spent.message).toMatch(/sent all a free account can/);
+  });
+
+  it("unlocks the whole clock, and says so on the pulse", async () => {
+    const fresh = await freshAccount();
+    clock.advance(10 * HOUR);
+    const mara = (await fresh.refresh()).friends.find((f) => f.profile.handle === "mara")!;
+    expect((await fresh.pulse()).sendsWholeClock).toBe(false);
+
+    const bought = await fresh.buyWholeClock();
+    expect(bought.ok).toBe(true);
+    if (!bought.ok || !("snapshot" in bought)) return;
+    expect(bought.snapshot.sendsWholeClock).toBe(true);
+    expect(bought.snapshot.balance).toBe(10 * HOUR);
+    expect((await fresh.pulse()).sendsWholeClock).toBe(true);
+
+    // Nine of the ten hours in one go.
+    const sent = await fresh.sendTime(mara.profile.id, 9 * HOUR);
+    expect(sent.ok).toBe(true);
+    if (sent.ok) expect(liveClock(sent.snapshot, clock.now())).toBe(HOUR);
+  });
+
+  it("lets an unlocked account send far past the 7-day daily limit", async () => {
+    // The seeded account has 95 days on its clock. Free, 7 days a day is the
+    // most that can leave it; unlocked, sixty can go at once, then twenty more.
+    const snap = await store.refresh();
+    const mara = snap.friends.find((f) => f.profile.handle === "mara")!;
+    const free = await store.sendTime(mara.profile.id, 8 * DAY);
+    expect(free.ok).toBe(false);
+    if (!free.ok) expect(free.message).toMatch(/limit|more today/i);
+
+    await store.buyWholeClock();
+    const sixty = await store.sendTime(mara.profile.id, 60 * DAY);
+    expect(sixty.ok).toBe(true);
+    expect((await store.sendTime(mara.profile.id, 20 * DAY)).ok).toBe(true);
+    if (sixty.ok) expect(sixty.snapshot.sentInLastDay).toBe(60 * DAY);
+  });
+
+  it("keeps the upgrade with the account across a new run", async () => {
+    const fresh = await freshAccount();
+    await fresh.buyWholeClock();
+    await fresh.stopStreak();
+    await fresh.startStreak();
+    clock.advance(HOUR);
+    const snap = await fresh.refresh();
+    expect(snap.sendsWholeClock).toBe(true);
+    expect(snap.balance).toBe(HOUR);
+  });
+
+  it("starts a new run's free share from nothing sent", async () => {
+    const fresh = await freshAccount();
+    clock.advance(10 * HOUR);
+    const mara = (await fresh.refresh()).friends.find((f) => f.profile.handle === "mara")!;
+    expect((await fresh.sendTime(mara.profile.id, HOUR)).ok).toBe(true);
+
+    await fresh.stopStreak();
+    await fresh.startStreak();
+    clock.advance(10 * HOUR);
+    const snap = await fresh.refresh();
+    expect(snap.me.streak.sentThisRun ?? 0).toBe(0);
+    expect(snap.balance).toBe(HOUR);
+  });
+
+  it("refuses to sell the upgrade to an anonymous account, or twice", async () => {
+    await store.signOut();
+    const anonymous = await store.buyWholeClock();
+    expect(anonymous.ok).toBe(false);
+    if (!anonymous.ok) expect(anonymous.message).toMatch(/create an account/i);
+
+    await store.signIn("you@example.com", "uptime-demo");
+    expect((await store.buyWholeClock()).ok).toBe(true);
+    const twice = await store.buyWholeClock();
+    expect(twice.ok).toBe(false);
+    if (!twice.ok) expect(twice.message).toMatch(/already/i);
+  });
+
+  it("still lets a free account revive once its share is spent", async () => {
+    const fresh = await freshAccount();
+    clock.advance(30 * DAY);
+    const snap = await fresh.refresh();
+    const mara = snap.friends.find((f) => f.profile.handle === "mara")!;
+    expect((await fresh.sendTime(mara.profile.id, 3 * DAY)).ok).toBe(true);
+    const spent = await fresh.refresh();
+    expect(liveGiveable(spent, clock.now())).toBe(0);
+
+    const broken = spent.friends.find((f) => f.revive)!;
+    expect(liveClock(spent, clock.now())).toBeGreaterThanOrEqual(broken.revive!.cost);
+    expect((await fresh.reviveFriend(broken.profile.id)).ok).toBe(true);
   });
 
   // --- other people's profiles ---------------------------------------------

@@ -1,4 +1,4 @@
-import { isMobile, isTauri } from "@/platform";
+import { currentPlatform, isMobile, isTauri } from "@/platform";
 
 /**
  * Keeping the desktop build current.
@@ -142,6 +142,53 @@ export async function installUpdate(
 function describe(error: unknown): string {
   if (error instanceof Error) return error.message;
   return typeof error === "string" ? error : "Unknown error";
+}
+
+/**
+ * Where the phone apps get their updates, for the Updates row to say so.
+ *
+ * Null on desktop, which updates itself, and in a browser, which is updated by
+ * reloading - neither has a store to name.
+ */
+export function updateStore(): string | null {
+  if (!isTauri()) return null;
+  const platform = currentPlatform();
+  if (platform === "android") return "Google Play";
+  if (platform === "ios") return "App Store";
+  return null;
+}
+
+/**
+ * Why a check or download failed, in words a person can act on.
+ *
+ * The updater's own errors are written for developers - "Could not fetch a
+ * valid release JSON from the remote" is what a missing release looks like -
+ * and the row used to show none of them, only "Failed - try again", which
+ * reads as a broken button rather than as a reason.
+ */
+export function failureReason(message: string): string {
+  if (/valid release JSON|status code|404|not found/i.test(message)) {
+    return "No update feed was found. Once a release is published, this finds it.";
+  }
+  if (/signature|public key|key id|minisign/i.test(message)) {
+    return "The update is not signed with this app's key. Reinstall from the download link.";
+  }
+  if (/error sending request|dns|connect|timed out|network|offline/i.test(message)) {
+    return "Could not reach GitHub. Check your connection and try again.";
+  }
+  return message;
+}
+
+/** The line under the Updates row, when there is more to say than its value. */
+export function updateDetail(state: UpdateState): string | null {
+  switch (state.phase) {
+    case "failed":
+      return failureReason(state.message);
+    case "ready":
+      return "Downloaded. Restarting takes a few seconds; your clock keeps running.";
+    default:
+      return null;
+  }
 }
 
 /** The Updates row's value in the Account tab. */

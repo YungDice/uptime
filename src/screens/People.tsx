@@ -9,6 +9,8 @@ interface Props {
   friends: FriendView[];
   /** What the viewer can give, live. */
   giveable: Seconds;
+  /** Everything on the viewer's clock, live - what a revive is paid from. */
+  spendable: Seconds;
   anonymous: boolean;
   onOpenAccount(): void;
   now: Seconds;
@@ -22,6 +24,7 @@ interface Props {
 export function People({
   friends,
   giveable,
+  spendable,
   anonymous,
   onOpenAccount,
   now,
@@ -128,6 +131,7 @@ export function People({
       <FriendList
         friends={others}
         giveable={anonymous ? 0 : giveable}
+        spendable={anonymous ? 0 : spendable}
         now={now}
         onSend={onSend}
         onRevive={onRevive}

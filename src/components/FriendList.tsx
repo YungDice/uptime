@@ -7,6 +7,12 @@ interface Props {
   friends: FriendView[];
   /** What the viewer can give, live. Decides whether Send is offered. */
   giveable: Seconds;
+  /**
+   * Everything on the viewer's clock, live: what a revive is paid from. More
+   * than `giveable` on a free account, whose share limits what is sent and
+   * not what is spent.
+   */
+  spendable: Seconds;
   now: Seconds;
   onSend(friend: FriendView): void;
   onRevive(friend: FriendView): void;
@@ -25,7 +31,16 @@ interface Props {
  * smaller buttons inside it, and the two jobs are different enough that they
  * should not have been sharing a target anyway.
  */
-export function FriendList({ friends, giveable, now, onSend, onRevive, onOpen, trailingTo }: Props) {
+export function FriendList({
+  friends,
+  giveable,
+  spendable,
+  now,
+  onSend,
+  onRevive,
+  onOpen,
+  trailingTo,
+}: Props) {
   if (friends.length === 0) {
     return (
       <p className="px-5 py-10 text-center text-callout text-label-2">
@@ -44,6 +59,7 @@ export function FriendList({ friends, giveable, now, onSend, onRevive, onOpen, t
         key={friend.profile.id}
         friend={friend}
         giveable={giveable}
+        spendable={spendable}
         now={now}
         delay={index * 24}
         onSend={() => onSend(friend)}
@@ -66,6 +82,7 @@ export function FriendList({ friends, giveable, now, onSend, onRevive, onOpen, t
 function FriendRow({
   friend,
   giveable,
+  spendable,
   now,
   delay,
   onSend,
@@ -75,6 +92,7 @@ function FriendRow({
 }: {
   friend: FriendView;
   giveable: Seconds;
+  spendable: Seconds;
   now: Seconds;
   delay: number;
   onSend(): void;
@@ -84,7 +102,7 @@ function FriendRow({
 }) {
   const status = statusOf(friend.streak, now);
   const live = isRunning(status);
-  const canAfford = friend.revive ? giveable >= friend.revive.cost : false;
+  const canAfford = friend.revive ? spendable >= friend.revive.cost : false;
   // A gift lands on their running clock, so a stopped one has nowhere to put
   // it. A lapsed one gets the Revive button instead.
   const canGive = friend.connected && giveable > 0 && live;

@@ -19,7 +19,7 @@ lets a phone's stopwatch survive a restart.
 npm install
 npm run dev          # browser, http://localhost:1420
 npm run desktop:dev  # the same app in a Tauri window
-npm test             # 100 tests over the domain rules and the store
+npm test             # 162 tests over the domain rules, the store, the updater and the Stripe webhook
 ```
 
 With no Supabase project configured the app runs against browser storage with
@@ -96,10 +96,27 @@ with both rows locked in id order so two people sending to each other at the
 same moment cannot deadlock.
 
 The rules around it are unchanged: time only moves between mutual follows,
-anonymous accounts cannot send, and at most 7 days can leave one account per
+anonymous accounts cannot send, and at most 7 days can leave a free account per
 rolling 24 hours. Two follow from the new model: you can send at most what your
 clock reads, and the recipient's clock has to be running - a stopped one has
 nowhere for the time to land, and a lapsed one is what reviving is for.
+
+**A free account sends a tenth; the upgrade sends it all.** Without the
+upgrade you can send 6 minutes for every hour on your clock - the ratio the
+old bank accrued at. The **whole-clock upgrade** is a one-off $5 purchase that
+lifts both limits: everything on the clock can be sent, with no daily cap, so a
+60-day clock can go to a friend in one gift. It belongs to the account, not the
+device or the run. Everyone keeps the 120-sends-an-hour limit, which protects
+the ledger rather than the economy.
+
+The share is counted across the run, not per gift. Measured against the clock
+as it reads *now*, a free account could send a tenth, then a tenth of what was
+left, and so on until it was empty, so the run remembers what has gone out of
+it (`sent_this_run`) and the share is a tenth of *clock + sent this run*. A
+send leaves that sum unchanged, so the share drops by exactly what was sent.
+Time you receive is on your clock like any other and adds a tenth of itself.
+A new run starts from nothing sent. Revives are not limited by the share: they
+are paid off the whole clock, as before.
 
 Reviving a broken streak restores **half** its lost length and costs the
 reviver a tenth of that restored stretch, **paid off their own clock**. A
@@ -183,12 +200,15 @@ it now; the People tab went from ~61 renders a second to 1.
   this; it is the one piece with no precedent in Nexo or Rater. The function
   skips any provider whose secrets are unset, so deploying it before you have
   credentials is harmless.
-- **The release workflow and a live update on Windows.** There is no
-  Windows machine here. The updater was compiled and a signed release build
-  was produced on Linux with the same key and config, and the staging script
-  and the update flow are unit-tested - but the first real run of
-  `release.yml`, and the first update from one installed version to the next,
-  are still to be watched.
+- **The release workflow on a GitHub runner.** Everything it runs has been
+  run on Windows: the exact build command (both installers, signed with the
+  current key) and the staging script. A real update was installed end to end
+  with a separately named test build - an installed 0.0.1 found 0.0.2 in a
+  feed, downloaded it, verified its signature, installed it from Account ->
+  App -> Updates and came back up as 0.0.2, reading "Up to date". What has not
+  run is `release.yml` itself on GitHub, and an update of an MSI install (a
+  per-machine MSI needs an administrator, and nobody was there to click the
+  prompt).
 - **Supabase itself.** The migrations were validated against stock PostgreSQL
   with a small `auth` schema shim, not against a live Supabase project. The
   `auth.uid()` and `auth.users` integration points are the parts to watch.
@@ -202,7 +222,11 @@ supabase link --project-ref <ref>
 supabase db push
 supabase functions deploy sweep-lapsed
 supabase functions deploy nudge-check-in
+supabase functions deploy create-checkout
+supabase functions deploy stripe-webhook --no-verify-jwt
 ```
+
+`npm run fn:deploy` runs all four.
 
 No direct Postgres access? Paste `supabase/deploy.sql` into the SQL editor
 instead. It is generated from the migrations - run `npm run db:bundle` after
@@ -217,71 +241,147 @@ Note that every action already sweeps the specific rows it touches, so the
 scheduled job is a backstop for accounts nobody is interacting with rather than
 the only thing standing between a dead streak and the leaderboards.
 
+### Taking payments
+
+The whole-clock upgrade is sold through **Stripe Checkout**. The app asks
+`create-checkout` for a payment page and opens it in the browser - the system
+browser on desktop, a new tab on the web. Nothing is unlocked by the app or by
+that function: only `stripe-webhook`, on a Stripe-signed event, writes the
+purchase (`0014_whole_clock_upgrade.sql`), and an open app notices on its next
+30-second pulse. The price is set server-side in
+`supabase/functions/_shared/stripe.ts` (`UPGRADE_PRICE`, 500 cents USD); the
+`$5` the app shows is `WHOLE_CLOCK_PRICE_LABEL` in `src/core/constants.ts`.
+Change them together.
+
+Setup, once per Stripe mode (do it in test mode first, with `sk_test_` keys):
+
+1. **The secret key.** `supabase secrets set STRIPE_SECRET_KEY=sk_...`
+2. **Where the browser lands afterwards.** `supabase secrets set
+   CHECKOUT_RETURN_URL=https://...` - any page of yours. Stripe adds
+   `?checkout=done` or `?checkout=cancelled`. If it is the web build of this
+   app, the app says what happened; otherwise make it a page that says "you can
+   go back to Uptime now". It is fixed server-side so nobody can mint a genuine
+   Stripe page that forwards its payer somewhere else.
+3. **The webhook.** In the Stripe dashboard, Developers -> Webhooks, add an
+   endpoint at `https://<project-ref>.supabase.co/functions/v1/stripe-webhook`
+   for `checkout.session.completed`, `checkout.session.async_payment_succeeded`
+   and `charge.refunded`, then `supabase secrets set
+   STRIPE_WEBHOOK_SECRET=whsec_...` with its signing secret.
+4. **Deploy** the migration and both functions (above).
+
+To try it end to end in test mode: buy with card `4242 4242 4242 4242`, any
+future expiry, any CVC. The account unlocks within half a minute. Refunding
+the payment in full from the dashboard locks it again; time already sent
+stays where it landed.
+
+Things to know:
+
+- **Anonymous accounts cannot buy it**, for the same reason they cannot send:
+  a purchase has to belong to an account that can be signed back into.
+- **The phone apps do not sell it.** Apple and Google require their own billing
+  for a digital upgrade sold inside an app, so the Android and iOS builds hide
+  the offer (`canBuyHere` in `src/payments/checkout.ts`). One bought on the
+  desktop or the web still applies there. A phone's web browser does sell it.
+- **Chargebacks are not handled.** A refund locks the account; a dispute does
+  not. Add `charge.dispute.created` to the webhook if that turns out to matter.
+- **The desktop app may open `https://checkout.stripe.com/*` and nothing else**
+  (`src-tauri/capabilities/desktop.json`). A custom Stripe checkout domain
+  needs adding there.
+
 ## Releasing the desktop app
 
-Windows users get one link that never changes:
+Windows users get two links that never change:
 
 ```
-https://github.com/YungDice/uptime-releases/releases/latest/download/Uptime_Installer.exe
+https://github.com/YungDice/uptime/releases/latest/download/Uptime_Installer.exe
+https://github.com/YungDice/uptime/releases/latest/download/Uptime_Installer.msi
 ```
 
-The file name carries no version, so the link always serves the current
-build. Once installed, the app keeps itself current: it checks on launch and
-every six hours, downloads a newer build in the background, and offers a
-restart (Account → App → Updates does the same by hand). Restarting costs
-nothing, because the clock was never kept by the app.
+The `.exe` is the one to hand out; the `.msi` is the same app as a Windows
+Installer package, for people and IT departments that want one. The file names
+carry no version, so the links always serve the current build. Once
+installed, the app keeps itself current: it checks on launch and every six
+hours, downloads a newer build in the background, and offers a restart
+(Account -> App -> Updates does the same by hand, and says why if it cannot).
+An app installed from the `.exe` updates from the `.exe` and one installed from
+the `.msi` from the `.msi`. Restarting costs nothing, because the clock was
+never kept by the app. The phone apps are updated by Google Play and the App
+Store instead; there the Updates row just says which.
 
-This repo is private, so the builds are published to a separate **public**
-repo, `YungDice/uptime-releases`, which holds nothing but releases. The
-installed app polls `latest.json` there; the source never leaves this repo.
+Releases are published in this repo, which is public, so the downloads and the
+update feed (`latest.json`) are too. If the repo is ever made private, see
+`RELEASES_REPO` below.
 
 ### Shipping a version
 
 ```bash
-npm run release              # 0.1.0 -> 0.1.1
-npm run release -- minor     # 0.1.0 -> 0.2.0 (also: major, or an exact 1.2.3)
+npm run release -- --check   # is everything ready? changes nothing
+npm run release              # 0.1.2 -> 0.1.3
+npm run release -- minor     # 0.1.2 -> 0.2.0 (also: major, or an exact 1.2.3)
 ```
 
-From a clean `main` that is level with origin, it runs the tests, bumps
-`package.json`, commits, tags `vX.Y.Z` and pushes both. The tag starts
-`.github/workflows/release.yml`; the command prints the link to watch it.
-Nothing is built on your machine. By hand it is `npm version patch` then
-`git push --follow-tags`.
+From a clean `main` that is level with origin, it checks the one-time setup
+below is done, runs the tests, bumps `package.json`, commits, tags `vX.Y.Z` and
+pushes both. The tag starts `.github/workflows/release.yml`, which builds both
+installers on a Windows runner, signs them, and publishes them with
+`latest.json` as the new latest release. The command follows that build to the
+end (about 15 minutes; Ctrl+C stops watching, not the build) and prints the
+download links. Nothing is built on your machine.
 
 `package.json` is the only place the version is written - `tauri.conf.json`
-and the Account screen both read it. The workflow builds the NSIS installer on
-Windows, signs it, and publishes `Uptime_Installer.exe` and `latest.json` as
-the new latest release. It refuses a tag that disagrees with `package.json`
-and a version that is already out. It can also be started by hand from the
-Actions tab, which ships whatever `package.json` says.
+and the Account screen both read it. The workflow refuses a tag that disagrees
+with `package.json` and a version that is already out. If a build fails after
+the tag is pushed, fix the cause on `main` and start **Actions -> Release ->
+Run workflow**: it ships whatever `package.json` says, so the same version
+goes out without spending a new number.
 
 ### One-time setup
 
-1. **Create the releases repo.** A public repo named `uptime-releases`, with
-   a README so it has a commit to hang the release tags on.
-2. **Give the workflow a token for it.** A fine-grained personal access token
-   with access to `uptime-releases` only and *Contents: Read and write*.
-   Save it in this repo as the Actions secret `RELEASES_TOKEN`.
-3. **Add the updater's signing key** as two Actions secrets:
-   `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is
-   `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`; an installed app
-   refuses any update that was not signed with it. The key has a password
-   because a Windows runner drops an empty environment variable, and Tauri
-   then asks for a password with nobody there to type it.
-4. **Optionally**, the Actions variables `VITE_SUPABASE_URL` and
-   `VITE_SUPABASE_ANON_KEY`. Without them the release runs on browser
-   storage, as a fresh checkout does. `RELEASES_REPO` publishes somewhere
-   other than `YungDice/uptime-releases`; change the endpoint in
-   `tauri.conf.json` to match.
+`npm run release -- --check` says which of these are missing.
 
-**Keep a copy of the private key somewhere other than GitHub.** Secrets cannot
-be read back, and without the key no installed copy can ever be updated
-again: everyone would have to reinstall from a build signed with a new one. To
-replace it, run `npx tauri signer generate -w uptime-updater.key` with a
-password, put the `.pub` contents in `tauri.conf.json` and the key and
-password in the two secrets, and ship one release by installer rather than by
-update.
+1. **The updater's signing key**, as two Actions secrets. The key pair lives in
+   `~/.tauri/` on the machine that made it: `uptime-updater.key`, its `.pub`,
+   and `uptime-updater.password`.
+
+   ```bash
+   gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/uptime-updater.key
+   gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD < ~/.tauri/uptime-updater.password
+   ```
+
+   The matching public key is `plugins.updater.pubkey` in
+   `src-tauri/tauri.conf.json`; an installed app refuses any update that was
+   not signed with it. The key has a password because a Windows runner drops
+   an empty environment variable, and Tauri then asks for a password with
+   nobody there to type it.
+2. **The backend the release talks to**, as two Actions variables - the same
+   values as `.env`. The anon key is public by design, so a variable is fine.
+
+   ```bash
+   gh variable set VITE_SUPABASE_URL --body "https://<ref>.supabase.co"
+   gh variable set VITE_SUPABASE_ANON_KEY --body "<anon key>"
+   ```
+
+   Without them the release runs on browser storage, with the demo cast, as a
+   fresh checkout does - so `npm run release` refuses to ship one.
+3. **Optionally**, `RELEASES_REPO`: an Actions variable naming a different repo
+   to publish to, plus a `RELEASES_TOKEN` secret that can write to it. Only
+   needed if this repo stops being public. Point `plugins.updater.endpoints`
+   in `tauri.conf.json` at the same repo, or installed copies will never find
+   an update - `npm run release` checks that the two agree.
+
+**Keep a copy of the private key and its password somewhere other than GitHub
+and this machine.** Secrets cannot be read back, and without the key no
+installed copy can ever be updated again: everyone would have to reinstall
+from a build signed with a new one. To replace it, run
+`npx tauri signer generate -w ~/.tauri/uptime-updater.key -p <password>`, put
+the `.pub` contents in `tauri.conf.json` and the key and password in the two
+secrets, and ship one release by installer rather than by update.
+
+The key in `tauri.conf.json` was replaced for exactly that reason on
+2026-09-24: the original was made in a cloud session and never reached this
+machine. No release had been published with it, but a copy built locally
+before then (0.1.0) trusts the old key and polls a feed that never existed, so
+it cannot update itself. Install once from the link above.
 
 A local `npm run desktop:build` is unaffected: it builds unsigned installers
 and never needs the key. The release build adds signing through
@@ -355,9 +455,12 @@ its next read.
 - **The name.** `Uptime` is the working name and is used throughout, including
   the bundle identifier `com.yungdice.uptime`. It has not had the gut check
   against the Yung Dice brand that the build prompt asked for.
-- **`CHECK_IN_WINDOW`, the revive price and the daily send cap** are the
-  numbers that decide how the game feels, and they are guesses. They are named
+- **`CHECK_IN_WINDOW`, the revive price, the daily send cap and the free
+  send share** are the numbers that decide how the game feels, and they are
+  guesses. They are named
   constants in `src/core/constants.ts` with matching SQL functions
   (`0001_schema.sql`, `0013_clock_transfers_and_scale.sql`); changing one is a
   one-line edit in each. Now that gifts move real clock time, the cap is also
-  what limits friends pooling time into one account to top "Running now".
+  what limits friends pooling time into one account to top "Running now" -
+  and paid accounts have no cap, so $5 a friend now buys unlimited pooling.
+  Worth watching once there are boards worth topping.

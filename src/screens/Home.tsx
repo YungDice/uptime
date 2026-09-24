@@ -1,6 +1,7 @@
 import {
   CHECK_IN_WINDOW,
   DAY,
+  WHOLE_CLOCK_PRICE_LABEL,
   formatDate,
   formatDuration,
   isRunning,
@@ -28,6 +29,8 @@ interface Props {
   onSend(): void;
   onRevive(): void;
   onOpenAccount(): void;
+  /** Start buying the whole-clock upgrade. Absent where it is not on offer. */
+  onUnlock?: () => void;
 }
 
 /** The window is a countdown, so it reaches 1 and then 0 and must read right. */
@@ -48,6 +51,7 @@ export function Home({
   onSend,
   onRevive,
   onOpenAccount,
+  onUnlock,
 }: Props) {
   const { me } = snapshot;
   // Derived here rather than read off the snapshot: the snapshot's status is
@@ -64,8 +68,8 @@ export function Home({
   const revivable = snapshot.friends.filter(isRevivable).length;
   const anonymous = snapshot.account.isAnonymous;
 
-  // Your running clock, recomputed against the ticking clock rather than read
-  // off the snapshot - see liveGiveable. Sending takes time straight off it.
+  // What you may send off your running clock, recomputed against the ticking
+  // clock rather than read off the snapshot - see liveGiveable.
   const giveable = liveGiveable(snapshot, now);
 
   return (
@@ -117,10 +121,12 @@ export function Home({
         giveable={giveable}
         live={live}
         anonymous={anonymous}
+        wholeClock={snapshot.sendsWholeClock}
         revivable={revivable}
         onSend={anonymous ? onOpenAccount : onSend}
         onRevive={anonymous ? onOpenAccount : onRevive}
         onOpenAccount={onOpenAccount}
+        {...(onUnlock && !anonymous ? { onUnlock } : {})}
       />
 
       <Section title="Run">
@@ -161,26 +167,30 @@ export function Home({
  *
  * There is no separate bank: the time you give is your clock. Whatever you send
  * comes straight off your own timer and is added to the other person's, and
- * time sent to you lands on yours. So the figure here is the running clock
- * itself - the most you could hand over right now - and it is seen moving,
- * because it is.
+ * time sent to you lands on yours. So the figure here is the most you could
+ * hand over right now - all of the running clock with the upgrade, a tenth of
+ * the run without - and it is seen moving, because it is.
  */
 function GivePanel({
   giveable,
   live,
   anonymous,
+  wholeClock,
   revivable,
   onSend,
   onRevive,
   onOpenAccount,
+  onUnlock,
 }: {
   giveable: Seconds;
   live: boolean;
   anonymous: boolean;
+  wholeClock: boolean;
   revivable: number;
   onSend(): void;
   onRevive(): void;
   onOpenAccount(): void;
+  onUnlock?: () => void;
 }) {
   return (
     <section className="mt-7 px-5">
@@ -207,7 +217,7 @@ function GivePanel({
                 className="animate-breathe h-1.5 w-1.5 rounded-full"
                 style={{ background: "var(--color-bank)" }}
               />
-              your clock
+              {wholeClock ? "your clock" : "a tenth of your clock"}
             </span>
           ) : null}
         </div>
@@ -223,9 +233,11 @@ function GivePanel({
         </div>
 
         <p className="relative mt-2 text-footnote text-label-2">
-          {live
-            ? "Whatever you send comes straight off your clock and is added to theirs. Time friends send you is added to yours."
-            : "Your clock isn't running, so there's no time to send - and nowhere for a friend's gift to land. Start it to take part."}
+          {!live
+            ? "Your clock isn't running, so there's no time to send - and nowhere for a friend's gift to land. Start it to take part."
+            : wholeClock
+              ? "Whatever you send comes straight off your clock and is added to theirs. Time friends send you is added to yours."
+              : "You can send 6 minutes for every hour on your clock. It comes straight off yours and is added to theirs, and time friends send you is added to yours."}
         </p>
 
         <div className="relative mt-4 flex gap-2.5">
@@ -248,6 +260,18 @@ function GivePanel({
         >
           Sending time needs an account. <span className="text-run">Create one</span> - your streak
           carries over.
+        </button>
+      ) : null}
+
+      {onUnlock ? (
+        <button
+          type="button"
+          onClick={onUnlock}
+          className="mt-3 block w-full text-left text-footnote text-label-2"
+        >
+          Want to give someone your whole clock?{" "}
+          <span className="text-run">Unlock it for {WHOLE_CLOCK_PRICE_LABEL}</span> - one payment,
+          yours for good.
         </button>
       ) : null}
     </section>
