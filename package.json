@@ -13,6 +13,8 @@
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
+    "release": "node scripts/release.mjs",
+    "fix:cargo-tls": "node scripts/fix-cargo-tls.mjs",
     "android:init": "tauri android init",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build",

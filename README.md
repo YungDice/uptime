@@ -238,9 +238,15 @@ installed app polls `latest.json` there; the source never leaves this repo.
 ### Shipping a version
 
 ```bash
-npm version patch         # 0.1.0 -> 0.1.1: bumps package.json, commits, tags
-git push --follow-tags    # the tag starts .github/workflows/release.yml
+npm run release              # 0.1.0 -> 0.1.1
+npm run release -- minor     # 0.1.0 -> 0.2.0 (also: major, or an exact 1.2.3)
 ```
+
+From a clean `main` that is level with origin, it runs the tests, bumps
+`package.json`, commits, tags `vX.Y.Z` and pushes both. The tag starts
+`.github/workflows/release.yml`; the command prints the link to watch it.
+Nothing is built on your machine. By hand it is `npm version patch` then
+`git push --follow-tags`.
 
 `package.json` is the only place the version is written - `tauri.conf.json`
 and the Account screen both read it. The workflow builds the NSIS installer on
@@ -280,6 +286,21 @@ update.
 A local `npm run desktop:build` is unaffected: it builds unsigned installers
 and never needs the key. The release build adds signing through
 `src-tauri/tauri.release.conf.json`.
+
+### `cargo` cannot reach crates.io on Windows
+
+```
+[60] SSL peer certificate or SSH remote key was not OK
+(schannel: SEC_E_UNTRUSTED_ROOT ...)
+```
+
+Cargo on Windows trusts only the Windows certificate store, and that store is
+missing the root that crates.io uses. Run `npm run fix:cargo-tls`. If
+crates.io checks out against the root list that ships with Node, the script
+points cargo at that list (`http.cainfo` in `%USERPROFILE%\.cargo\config.toml`).
+If it does not, something like antivirus HTTPS scanning or a company proxy is
+re-signing the traffic. The script then names who is re-signing it and changes
+nothing.
 
 ### The icons
 
