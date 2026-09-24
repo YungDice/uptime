@@ -352,6 +352,13 @@ reason that matters: it is the default of every streak app this one is
 compared against. The ring's taper keeps the motion that reference had
 without the shape it came in.
 
+**In the app.** The mark is the launch screen: `brand/mark.svg` at 96px over
+"Reading your clock", the first frame of every open. The Uptime tab carries it
+redrawn as a line icon at the tab bar's 1.6 stroke - ring open at half past
+one, crown, hand through the opening - so it takes the tab's grey or orange
+like the other three. The taper does not survive at 26px; the line icon's ring
+is even.
+
 **Files.**
 - `app-icon.svg` - the mark on its 228-radius tile. Source for desktop and iOS.
 - `mark.svg` - transparent, for dark grounds. The pivot is a real hole.
