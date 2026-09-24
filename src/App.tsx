@@ -5,8 +5,10 @@ import {
   liveClock,
   liveGiveable,
   type CheckoutResult,
+  type Revive,
   type SendTarget,
 } from "@/data";
+import type { UserProfile } from "@/core/types";
 import { useSession } from "@/hooks/useSession";
 import { useBackStack } from "@/hooks/useBackStack";
 import { Home } from "@/screens/Home";
@@ -20,7 +22,7 @@ import { Shell } from "@/components/Shell";
 import { UpdateOffer } from "@/components/UpdateOffer";
 import { useUpdater } from "@/updates/useUpdater";
 import { canBuyHere, openCheckout } from "@/payments/checkout";
-import { formatDuration } from "@/core";
+import { DAY, formatDuration } from "@/core";
 import type { Tab } from "@/components/TabBar";
 import markUrl from "../brand/mark.svg";
 
@@ -32,6 +34,8 @@ export function App() {
   const [sending, setSending] = useState<SendTarget | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const [confirmingStop, setConfirmingStop] = useState(false);
+  /** A revive waiting on a yes: it spends days off your clock in one tap. */
+  const [reviving, setReviving] = useState<{ profile: UserProfile; revive: Revive } | null>(null);
   const [trailingTo, setTrailingTo] = useState<string | null>(null);
   const [justCheckedIn, setJustCheckedIn] = useState(false);
   /** A checkout being started, so a second tap does not open a second page. */
@@ -41,11 +45,12 @@ export function App() {
   // profile behind it, then the tab, then the app itself. Without this, back
   // quits from wherever the user happens to be standing, which on a four-tab
   // app with two overlay layers is always wrong.
-  const sheetOpen = sending !== null || confirmingStop;
+  const sheetOpen = sending !== null || confirmingStop || reviving !== null;
   useBackStack(
     (tab === "clock" ? 0 : 1) + (viewing !== null ? 1 : 0) + (sheetOpen ? 1 : 0),
     () => {
       if (sending) setSending(null);
+      else if (reviving) setReviving(null);
       else if (confirmingStop) setConfirmingStop(false);
       else if (viewing !== null) setViewing(null);
       else setTab("clock");
@@ -163,6 +168,10 @@ export function App() {
     setViewing(userId);
   };
 
+  const askRevive = (who: { profile: UserProfile; revive?: Revive | null }) => {
+    if (who.revive) setReviving({ profile: who.profile, revive: who.revive });
+  };
+
   const checkIn = async () => {
     setJustCheckedIn(true);
     setTimeout(() => setJustCheckedIn(false), 450);
@@ -195,19 +204,32 @@ export function App() {
       local={!isBackedByServer()}
       markAccount={snapshot.account.isAnonymous}
     >
+      {/* Floated over the page rather than placed in it. In the flow it pushed
+          the whole screen down on arrival and pulled it back up on expiry -
+          moving buttons out from under a finger mid-tap - sat behind the
+          scrim of any open sheet, and scrolled away with the page. */}
       {session.notice ? (
         <div
-          key={session.notice.id}
-          role="status"
-          className="animate-rise surface-tint mx-5 mt-3 rounded-xl px-4 py-3 text-callout"
-          style={{
-            color:
-              session.notice.tone === "good" ? "var(--color-bank)" : "var(--color-lapse)",
-            ["--tint" as string]:
-              session.notice.tone === "good" ? "var(--color-bank)" : "var(--color-lapse)",
-          }}
+          className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex justify-center px-4"
+          style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
         >
-          {session.notice.text}
+          <button
+            key={session.notice.id}
+            type="button"
+            role="status"
+            onClick={session.dismissNotice}
+            className="animate-drop pointer-events-auto w-full max-w-md rounded-2xl px-4 py-3 text-left text-callout"
+            style={{
+              color: session.notice.tone === "good" ? "var(--color-bank)" : "var(--color-lapse)",
+              background: `color-mix(in srgb, ${
+                session.notice.tone === "good" ? "var(--color-bank)" : "var(--color-lapse)"
+              } 16%, #1a1a1c)`,
+              boxShadow:
+                "inset 0 1px 0 0 rgb(255 255 255 / 10%), 0 12px 32px -8px rgb(0 0 0 / 85%)",
+            }}
+          >
+            {session.notice.text}
+          </button>
         </div>
       ) : null}
 
@@ -240,7 +262,7 @@ export function App() {
           trailingTo={trailingTo}
           onFollow={(handle) => void session.run(() => store.follow(handle))}
           onSend={setSending}
-          onRevive={(friend) => void session.run(() => store.reviveFriend(friend.profile.id))}
+          onRevive={askRevive}
           onOpenProfile={openProfile}
         />
       ) : null}
@@ -285,7 +307,7 @@ export function App() {
           anonymous={snapshot.account.isAnonymous}
           onClose={() => setViewing(null)}
           onSend={setSending}
-          onRevive={(them) => void session.run(() => store.reviveFriend(them.profile.id))}
+          onRevive={askRevive}
           onFollow={(handle) => void session.run(() => store.follow(handle))}
           onUnfollow={(userId) => void session.run(() => store.unfollow(userId))}
         />
@@ -302,6 +324,29 @@ export function App() {
           {...(canUnlock ? { onUnlock: () => void buyWholeClock() } : {})}
           onCancel={() => setSending(null)}
           onConfirm={(amount) => void confirmSend(amount)}
+        />
+      ) : null}
+
+      {reviving ? (
+        <ConfirmSheet
+          title={`Revive ${reviving.profile.displayName}?`}
+          confirmLabel="Revive"
+          cancelLabel="Not now"
+          tone="run"
+          body={
+            <>
+              Their streak ran {Math.floor(reviving.revive.lostLength / DAY)} days before it broke.
+              Reviving restarts it at {Math.floor(reviving.revive.restores / DAY)} days, and the{" "}
+              {formatDuration(reviving.revive.cost)} it costs comes straight off your own clock.
+              That time is spent, not sent - it cannot be taken back.
+            </>
+          }
+          onCancel={() => setReviving(null)}
+          onConfirm={() => {
+            const target = reviving;
+            setReviving(null);
+            void session.run(() => store.reviveFriend(target.profile.id));
+          }}
         />
       ) : null}
 

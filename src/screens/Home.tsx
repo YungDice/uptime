@@ -10,7 +10,7 @@ import {
   type Clock,
   type Seconds,
 } from "@/core";
-import { isRevivable, liveGiveable, type Snapshot } from "@/data/store";
+import { isRevivable, liveGiveable, liveSendableNow, type Snapshot } from "@/data/store";
 import { StopwatchFace } from "@/components/StopwatchFace";
 import { Capsule, Row, Section } from "@/components/List";
 import { LiveTime } from "@/components/LiveTime";
@@ -70,7 +70,9 @@ export function Home({
 
   // What you may send off your running clock, recomputed against the ticking
   // clock rather than read off the snapshot - see liveGiveable.
-  const giveable = liveGiveable(snapshot, now);
+  const giveable = liveSendableNow(snapshot, now);
+  // The daily cap, not the share, is what is holding the figure down.
+  const capped = giveable < liveGiveable(snapshot, now);
 
   return (
     <div className="pb-4">
@@ -122,6 +124,7 @@ export function Home({
         live={live}
         anonymous={anonymous}
         wholeClock={snapshot.sendsWholeClock}
+        capped={capped}
         revivable={revivable}
         onSend={anonymous ? onOpenAccount : onSend}
         onRevive={anonymous ? onOpenAccount : onRevive}
@@ -176,6 +179,7 @@ function GivePanel({
   live,
   anonymous,
   wholeClock,
+  capped,
   revivable,
   onSend,
   onRevive,
@@ -186,6 +190,7 @@ function GivePanel({
   live: boolean;
   anonymous: boolean;
   wholeClock: boolean;
+  capped: boolean;
   revivable: number;
   onSend(): void;
   onRevive(): void;
@@ -217,7 +222,7 @@ function GivePanel({
                 className="animate-breathe h-1.5 w-1.5 rounded-full"
                 style={{ background: "var(--color-bank)" }}
               />
-              {wholeClock ? "your clock" : "a tenth of your clock"}
+              {capped ? "today's limit" : wholeClock ? "your clock" : "a tenth of your clock"}
             </span>
           ) : null}
         </div>

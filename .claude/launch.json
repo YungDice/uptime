@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "uptime-local",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set VITE_UPTIME_ADAPTER=local&& npx vite"],
+      "port": 1420
+    }
+  ]
+}

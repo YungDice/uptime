@@ -171,7 +171,7 @@ export function Profile({
               <p className="text-body text-lapse">Their streak broke</p>
               <p className="mt-1 text-footnote text-label-2">
                 It ran {Math.floor(them.revive.lostLength / DAY)} days. Reviving brings back{" "}
-                {Math.floor(them.revive.restores / DAY)} for {formatDuration(them.revive.cost)}.
+                {Math.floor(them.revive.restores / DAY)} days for {formatDuration(them.revive.cost)}.
               </p>
             </>
           ) : (
@@ -225,7 +225,12 @@ export function Profile({
 
         <Section title="Record">
           <Row label="Longest run" value={formatDuration(them.personalBest)} tone="run" />
-          <Row label="Time kept in total" value={formatDuration(them.lifetimeSeconds)} />
+          {/* The column holds finished runs only, so the one running now is
+              added - otherwise 400 days in reads as a career of 60. */}
+          <Row
+            label="Time kept in total"
+            value={formatDuration(them.lifetimeSeconds + (live ? status.elapsed : 0))}
+          />
           <Row label="Given away" value={formatDuration(them.totalSent)} tone="bank" />
           <Row label="Received" value={formatDuration(them.totalReceived)} />
           <Row label="Streaks rescued" value={`${them.rescues}`} />

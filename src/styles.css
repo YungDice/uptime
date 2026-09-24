@@ -350,6 +350,20 @@ nav,
 .animate-rise {
   animation: rise 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+/* The toast: arrives from above, over the page, instead of rising inside it. */
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-drop {
+  animation: drop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 .animate-tick {
   animation: tick 900ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -470,6 +484,7 @@ nav,
   .animate-confirm,
   .animate-handoff,
   .animate-rise,
+  .animate-drop,
   .animate-tick,
   .animate-breathe,
   .animate-deal,

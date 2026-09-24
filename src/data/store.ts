@@ -1,4 +1,4 @@
-import { clockTime, sendable } from "@/core/economy";
+import { clockTime, sendable, sendableToday } from "@/core/economy";
 import { statusOf } from "@/core/streak";
 import type { BoardEntry, BoardId } from "@/core/leaderboards";
 import type { Gift } from "@/core/economy";
@@ -144,6 +144,18 @@ export function liveGiveable(snapshot: Snapshot, now: Seconds): Seconds {
     sendsWholeClock: snapshot.sendsWholeClock,
     sentThisRun: snapshot.me.streak.sentThisRun ?? 0,
   });
+}
+
+/**
+ * What can actually leave in a send right now: the share, cut to what the
+ * rolling daily cap still allows. The headline figures use this - quoting the
+ * share alone promised a free account nine days it could only send seven of.
+ */
+export function liveSendableNow(snapshot: Snapshot, now: Seconds): Seconds {
+  return Math.min(
+    liveGiveable(snapshot, now),
+    sendableToday(snapshot.sentInLastDay, snapshot.sendsWholeClock),
+  );
 }
 
 /**

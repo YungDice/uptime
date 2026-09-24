@@ -13,7 +13,7 @@ import {
 } from "@/core";
 import {
   ANONYMOUS_LIMITS,
-  liveGiveable,
+  liveSendableNow,
   type RankInfo,
   type Snapshot,
   type UptimeStore,
@@ -219,7 +219,8 @@ function SignedIn({
 
   const achievements = achievementsFor({
     personalBest: snapshot.personalBest,
-    lifetimeSeconds: me.lifetimeSeconds,
+    // The column holds finished runs only; the one in progress counts too.
+    lifetimeSeconds: me.lifetimeSeconds + (running ? Math.max(0, now - (me.streak.streakStart ?? now)) : 0),
     totalSent: snapshot.totalSent,
     rescues: typeof rescues?.value === "number" ? rescues.value : 0,
     best:
@@ -312,7 +313,7 @@ function SignedIn({
         <Stat
           label="Can send"
           tone="bank"
-          value={<LiveTime compact seconds={liveGiveable(snapshot, now)} />}
+          value={<LiveTime compact seconds={liveSendableNow(snapshot, now)} />}
         />
       </div>
 
