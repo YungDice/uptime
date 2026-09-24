@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Uptime",
-  "version": "0.1.0",
+  "version": "../package.json",
   "identifier": "com.yungdice.uptime",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -46,6 +46,24 @@
     },
     "iOS": {
       "minimumSystemVersion": "16.2"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "sidebarImage": "windows/installer-sidebar.bmp"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4RDdCREU0OEExQ0QyOUUKUldTZTBoeUs1TDNYR0UvbU5KbmM2dEZVK0dvcVpNY2xRVTB1ZkJUYkZ2dFBUUVR1azBPUjBrNkQK",
+      "endpoints": [
+        "https://github.com/YungDice/uptime-releases/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

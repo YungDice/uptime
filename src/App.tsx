@@ -10,12 +10,16 @@ import { Profile } from "@/screens/Profile";
 import { ConfirmSheet } from "@/components/ConfirmSheet";
 import { SendSheet } from "@/components/SendSheet";
 import { Shell } from "@/components/Shell";
+import { UpdateOffer } from "@/components/UpdateOffer";
+import { useUpdater } from "@/updates/useUpdater";
 import { formatDuration } from "@/core";
 import type { Tab } from "@/components/TabBar";
+import markUrl from "../brand/mark.svg";
 
 export function App() {
   const store = useMemo(() => createStore(), []);
   const session = useSession(store, "you");
+  const updater = useUpdater();
   const [tab, setTab] = useState<Tab>("clock");
   const [sending, setSending] = useState<SendTarget | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
@@ -55,10 +59,15 @@ export function App() {
     );
   }
 
+  // The first frame of every launch, so it is where the mark lives: the same
+  // file the app icon is built from.
   if (!snapshot) {
     return (
       <Shell tab={tab} onTab={setTab}>
-        <p className="px-5 pt-16 text-center text-callout text-label-2">Reading your clock</p>
+        <div className="flex flex-col items-center px-5 pt-24">
+          <img src={markUrl} alt="" width={96} height={96} />
+          <p className="mt-5 text-center text-callout text-label-2">Reading your clock</p>
+        </div>
       </Shell>
     );
   }
@@ -130,6 +139,8 @@ export function App() {
         </div>
       ) : null}
 
+      <UpdateOffer state={updater.state} onInstall={updater.install} />
+
       {tab === "clock" ? (
         <Home
           snapshot={snapshot}
@@ -183,6 +194,7 @@ export function App() {
           onSignOut={() => void session.run(() => store.signOut())}
           onSetHandle={(handle) => void session.run(() => store.setHandle(handle))}
           onSetDisplayName={(name) => void session.run(() => store.setDisplayName(name))}
+          updater={updater}
         />
       ) : null}
 

@@ -1,0 +1,113 @@
+name: Release
+
+# Builds the Windows installer, signs it for the updater, and publishes it to
+# the public releases repo that installed copies poll. This repo stays private;
+# only the installer and the update feed leave it.
+#
+# To ship a version:
+#   npm version patch        # bumps package.json, commits, tags vX.Y.Z
+#   git push --follow-tags
+#
+# One-time setup is in README.md, under "Releasing the desktop app".
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Release notes (optional)
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      RELEASES_REPO: ${{ vars.RELEASES_REPO || 'YungDice/uptime-releases' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the one-time setup
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          missing=0
+          [ -n "$KEY" ] || { echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY secret - see README.md, Releasing the desktop app."; missing=1; }
+          [ -n "$PASSWORD" ] || { echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY_PASSWORD secret - see README.md, Releasing the desktop app."; missing=1; }
+          [ -n "$TOKEN" ] || { echo "::error::Add the RELEASES_TOKEN secret - see README.md, Releasing the desktop app."; missing=1; }
+          exit $missing
+
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json ($expected). Bump with 'npm version' so the two cannot disagree."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Build and sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Without these the release runs on browser storage, like a fresh
+          # checkout does. The anon key is public by design, so a variable is
+          # fine; a secret works too.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.release.conf.json
+
+      - name: Stage Uptime_Installer.exe and latest.json
+        env:
+          RELEASE_NOTES: ${{ inputs.notes }}
+        run: node scripts/stage-release.mjs
+
+      - name: Publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if gh release view "v$version" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            echo "::error::v$version is already published in $RELEASES_REPO. Bump the version to ship again."
+            exit 1
+          fi
+          # Marked latest, so releases/latest/download/* - the installer link
+          # and the updater's feed - move to this build together.
+          gh release create "v$version" release/Uptime_Installer.exe release/latest.json \
+            --repo "$RELEASES_REPO" \
+            --title "Uptime $version" \
+            --notes "${NOTES:-Uptime $version}" \
+            --latest
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uptime-${{ github.run_number }}-windows
+          path: release/

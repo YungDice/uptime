@@ -21,6 +21,8 @@ import { Capsule, Row, Section } from "@/components/List";
 import { Avatar } from "@/components/Avatar";
 import { LiveTime } from "@/components/LiveTime";
 import { Medal } from "@/components/Medal";
+import { appVersion, updateLabel } from "@/updates/updater";
+import type { Updater } from "@/updates/useUpdater";
 
 interface Props {
   snapshot: Snapshot;
@@ -33,10 +35,41 @@ interface Props {
   onSetHandle(handle: string): void;
   onSetDisplayName(name: string): void;
   onSetAvatar(file: File | null): void;
+  updater: Updater;
 }
 
 export function Account(props: Props) {
-  return props.snapshot.account.isAnonymous ? <Anonymous {...props} /> : <SignedIn {...props} />;
+  return (
+    <>
+      {props.snapshot.account.isAnonymous ? <Anonymous {...props} /> : <SignedIn {...props} />}
+      <AppSection updater={props.updater} />
+    </>
+  );
+}
+
+/**
+ * Which build this is, and on desktop, whether there is a newer one.
+ *
+ * The row is the manual half of the updater: it checks on launch by itself,
+ * and this is where a user who heard about a release goes to ask for it.
+ */
+function AppSection({ updater }: { updater: Updater }) {
+  const { state } = updater;
+  const action =
+    state.phase === "ready"
+      ? updater.install
+      : state.phase === "idle" || state.phase === "current" || state.phase === "failed"
+        ? updater.check
+        : undefined;
+
+  return (
+    <Section title="App">
+      <Row label="Version" value={appVersion} />
+      {state.phase === "unsupported" ? null : (
+        <Row label="Updates" value={updateLabel(state)} {...(action ? { onClick: action } : {})} />
+      )}
+    </Section>
+  );
 }
 
 /**

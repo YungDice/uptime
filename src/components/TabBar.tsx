@@ -19,7 +19,7 @@ export function TabBar({
   markAccount?: boolean;
 }) {
   const items: { id: Tab; label: string; icon: JSX.Element }[] = [
-    { id: "clock", label: "Uptime", icon: <StopwatchIcon /> },
+    { id: "clock", label: "Uptime", icon: <MarkIcon /> },
     { id: "people", label: "People", icon: <PeopleIcon /> },
     { id: "boards", label: "Boards", icon: <BoardsIcon /> },
     { id: "account", label: "Account", icon: <AccountIcon /> },
@@ -74,13 +74,20 @@ const stroke = {
   strokeLinejoin: "round" as const,
 };
 
-function StopwatchIcon() {
+/**
+ * The mark (brand/mark.svg) redrawn as a line icon, so the home tab carries
+ * the app's own face at the same weight as the other three. The ring is open
+ * at half past one and the hand runs out through the opening, as in the mark;
+ * the tapered tail does not survive a 1.6 stroke, so the ring is even here.
+ */
+function MarkIcon() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="13.5" r="7.5" {...stroke} />
-      <path d="M12 13.5V9.6" {...stroke} />
-      <path d="M9.6 2.5h4.8" {...stroke} />
-      <path d="M18.4 7.1l1.3-1.3" {...stroke} />
+      <path d="M15.05 6.65A7.5 7.5 0 1 0 18.85 10.45" {...stroke} />
+      <path d="M12 5.9V3.4" {...stroke} />
+      <path d="M10.2 2.6h3.6" {...stroke} />
+      <path d="M10.16 15.34L19.92 5.58" {...stroke} />
+      <circle cx="12" cy="13.5" r="1.6" fill="currentColor" />
     </svg>
   );
 }

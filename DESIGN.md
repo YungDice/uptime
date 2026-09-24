@@ -323,6 +323,49 @@ The Timer's ring around the Stopwatch's face, and both halves are load-bearing. 
 
 The milliseconds tick on `requestAnimationFrame` and fall back to whole seconds under `prefers-reduced-motion`. Only the face subscribes to the frame clock; everything else on screen ticks once a second. The readout is `aria-hidden` and the enclosing section carries an `aria-label` instead, because a field changing every frame must never be announced.
 
+## The Mark
+
+A stopwatch whose hand has gone past the edge of its own face. Files live in
+`brand/`; every platform icon is generated from them with `npm run icons`.
+
+**Construction** (on a 1024 grid, centre 512, 548):
+- **The ring** is the check-in window: an outer circle of r 318 and an inner
+  circle of r 226, so 92 thick at full weight. It is open at half past one.
+  The leading end, towards twelve, is cut parallel to the hand. The trailing
+  end tapers to a point over 120 degrees, on a single arc that leaves the outer
+  circle at the tip and lands tangent on the inner one. It reads as moving
+  clockwise, and there are no curves in it except circles.
+- **The crown** is a pill on a short stem at twelve - the one detail that makes
+  it a stopwatch rather than a gauge.
+- **The hand** is the run: a needle through a round hub with the pivot cut out,
+  pointing at half past one and passing through the opening, 122 units past
+  the ring. Nothing stops it at the edge.
+
+**Colour.** White ring and crown, Clock Orange hand, on the `page` tile. That
+is the colour law applied to the icon: orange is the live run, and the only
+thing in the mark that moves is the hand. `mark-mono.svg` is the one-colour
+version, and takes `currentColor`.
+
+**What it is not.** A flame. The first reference for the mark was a flame
+wrapped round a clock face, and PRODUCT.md already rules the flame out for the
+reason that matters: it is the default of every streak app this one is
+compared against. The ring's taper keeps the motion that reference had
+without the shape it came in.
+
+**In the app.** The mark is the launch screen: `brand/mark.svg` at 96px over
+"Reading your clock", the first frame of every open. The Uptime tab carries it
+redrawn as a line icon at the tab bar's 1.6 stroke - ring open at half past
+one, crown, hand through the opening - so it takes the tab's grey or orange
+like the other three. The taper does not survive at 26px; the line icon's ring
+is even.
+
+**Files.**
+- `app-icon.svg` - the mark on its 228-radius tile. Source for desktop and iOS.
+- `mark.svg` - transparent, for dark grounds. The pivot is a real hole.
+- `mark-mono.svg` - one colour.
+- `android-*.svg` - adaptive-icon layers. The foreground is scaled to 0.72 so
+  the needle's tip stays inside the launcher's 66dp safe circle.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -344,3 +387,4 @@ The milliseconds tick on `requestAnimationFrame` and fall back to whole seconds 
 - **Don't** add a third authored animation. Motion is `confirm` (the check-in press) and `handoff` (the sweep along the recipient's row); `rise` is entry-only for sheets and notices.
 - **Don't** set a figure at display size in a weight above 300, or render any number in proportional figures.
 - **Don't** reach for a flame, a gradient hero, a progress-dashboard widget, or a card stack — that is the exact reference this world refuses.
+- **Don't** redraw the mark at a call site, recolour the ring, or put the hand in any colour but `run`. Use a file from `brand/`.
