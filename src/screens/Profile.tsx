@@ -190,7 +190,8 @@ export function Profile({
               tone="bank"
               solid
               wide
-              disabled={anonymous || giveable <= 0}
+              // Their clock has to be running for a gift to land on it.
+              disabled={anonymous || giveable <= 0 || !live}
               onClick={() => onSend(them)}
             >
               Send Time

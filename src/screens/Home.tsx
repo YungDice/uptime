@@ -1,13 +1,12 @@
 import {
-  ACCRUAL_RATE,
   CHECK_IN_WINDOW,
   DAY,
-  HOUR,
   formatDate,
   formatDuration,
   isRunning,
   milestoneProgress,
   statusOf,
+  type Clock,
   type Seconds,
 } from "@/core";
 import { isRevivable, liveGiveable, type Snapshot } from "@/data/store";
@@ -20,8 +19,8 @@ interface Props {
   snapshot: Snapshot;
   /** Whole seconds, for everything that is not the face. */
   now: Seconds;
-  /** Fractional seconds, for the face alone. */
-  fractionalNow: number;
+  /** The corrected clock, which the face reads per frame on its own. */
+  clock: Clock;
   justCheckedIn: boolean;
   onCheckIn(): void;
   onStart(): void;
@@ -41,7 +40,7 @@ function checkInLabel(days: number): string {
 export function Home({
   snapshot,
   now,
-  fractionalNow,
+  clock,
   justCheckedIn,
   onCheckIn,
   onStart,
@@ -56,7 +55,6 @@ export function Home({
   // face frozen between refreshes.
   const status = statusOf(me.streak, now);
   const live = isRunning(status);
-  const elapsed = live ? fractionalNow - (me.streak.streakStart ?? 0) : 0;
   const milestone = milestoneProgress(live ? status.elapsed : 0);
 
   // Measured from the previous visit, not from the touch this visit just made.
@@ -66,15 +64,16 @@ export function Home({
   const revivable = snapshot.friends.filter(isRevivable).length;
   const anonymous = snapshot.account.isAnonymous;
 
-  // Recomputed against the ticking clock rather than read off the snapshot -
-  // see liveGiveable. This is the number the whole Give panel is about.
+  // Your running clock, recomputed against the ticking clock rather than read
+  // off the snapshot - see liveGiveable. Sending takes time straight off it.
   const giveable = liveGiveable(snapshot, now);
 
   return (
     <div className="pb-4">
       <StopwatchFace
         status={status}
-        elapsed={elapsed}
+        streakStart={me.streak.streakStart}
+        clock={clock}
         windowFraction={live ? windowFraction : 0}
         windowLabel={
           live
@@ -158,17 +157,13 @@ export function Home({
 }
 
 /**
- * The time you can give away, and the two things you can do with it.
+ * Sending time, and reviving with it.
  *
- * This replaces a list row reading "Balance - 13m" inside a section headed
- * "Banked", and the reason it is now a panel with a running readout in it is
- * that the old one was a lie of omission. The figure grows continuously while
- * the clock runs, but the snapshot it came from was only ever refetched when
- * something was pressed - so it sat perfectly still for an hour and then jumped
- * eight minutes the instant you stopped the clock, which looks exactly like the
- * app making numbers up. It never was a balance in an account that something
- * deposits into; it is a tenth of the time you have kept, and it should be seen
- * moving.
+ * There is no separate bank: the time you give is your clock. Whatever you send
+ * comes straight off your own timer and is added to the other person's, and
+ * time sent to you lands on yours. So the figure here is the running clock
+ * itself - the most you could hand over right now - and it is seen moving,
+ * because it is.
  */
 function GivePanel({
   giveable,
@@ -187,15 +182,11 @@ function GivePanel({
   onRevive(): void;
   onOpenAccount(): void;
 }) {
-  // Said in the unit the user is watching accrue, not as a rate: "6m an hour"
-  // is a sentence, "0.1x" is a spreadsheet.
-  const perHour = formatDuration(HOUR * ACCRUAL_RATE);
-
   return (
     <section className="mt-7 px-5">
       <div className="surface relative overflow-hidden rounded-2xl px-4 pt-4 pb-4">
-        {/* A very faint wash of the bank colour from the top-right, so the panel
-            is legibly about giving before a word of it is read. */}
+        {/* A very faint wash of the giving colour from the top-right, so the
+            panel is legibly about giving before a word of it is read. */}
         <span
           aria-hidden="true"
           className="pointer-events-none absolute -top-16 -right-12 h-40 w-40 rounded-full"
@@ -207,7 +198,7 @@ function GivePanel({
 
         <div className="relative flex items-baseline justify-between">
           <h2 className="text-overline text-label-2 uppercase">
-            To give
+            You can send
           </h2>
           {live ? (
             <span className="flex items-center gap-1.5 text-micro font-medium text-bank">
@@ -216,7 +207,7 @@ function GivePanel({
                 className="animate-breathe h-1.5 w-1.5 rounded-full"
                 style={{ background: "var(--color-bank)" }}
               />
-              rising
+              your clock
             </span>
           ) : null}
         </div>
@@ -233,8 +224,8 @@ function GivePanel({
 
         <p className="relative mt-2 text-footnote text-label-2">
           {live
-            ? `Grows by ${perHour} for every hour your clock keeps running. Giving it away never shortens your own streak.`
-            : `A tenth of the time you keep. Start the clock and it grows by ${perHour} an hour.`}
+            ? "Whatever you send comes straight off your clock and is added to theirs. Time friends send you is added to yours."
+            : "Your clock isn't running, so there's no time to send - and nowhere for a friend's gift to land. Start it to take part."}
         </p>
 
         <div className="relative mt-4 flex gap-2.5">

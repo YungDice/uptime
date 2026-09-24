@@ -3,8 +3,9 @@
 A streak you keep by existing.
 
 Uptime takes the "I started a stopwatch and never stopped it" trend and gives
-it stakes: the time you keep becomes a currency you can give away and
-spend bringing a friend's broken streak back.
+it stakes: the time on your clock is a currency. Send some to a friend and it
+comes straight off your timer and lands on theirs; spend some to bring a
+friend's broken streak back.
 
 The clock is never a running process. Every number in the app is
 `now - streak_start`, computed at the moment it is read — the same trick that
@@ -18,7 +19,7 @@ lets a phone's stopwatch survive a restart.
 npm install
 npm run dev          # browser, http://localhost:1420
 npm run desktop:dev  # the same app in a Tauri window
-npm test             # 56 tests over the domain rules and the store
+npm test             # 100 tests over the domain rules and the store
 ```
 
 With no Supabase project configured the app runs against browser storage with
@@ -86,26 +87,54 @@ Without that, a returning user would find a zeroed counter and no explanation.
 
 ### The economy
 
-Giveable time accrues at **10% of all time kept** and is separate from the
-streak, so giving time away never makes your own record look shorter than it
-ran.
+**The time you send is your clock.** There is no separate bank. Sending an
+hour takes that hour straight off your own running timer and adds it to the
+recipient's; time sent to you is added to yours. Because nothing ticks, a
+clock is `now - streak_start`, so a transfer moves two timestamps: the
+sender's start later, the recipient's earlier. Both happen in one transaction,
+with both rows locked in id order so two people sending to each other at the
+same moment cannot deadlock.
 
-It is deliberately **not** presented as a bank. There is no deposit, nothing to
-collect and no moment where time moves from one place to another - it is a
-tenth of the clock on the previous screen, and the interface shows it running.
-The client recomputes it against the ticking clock (`liveGiveable`) rather than
-reading the figure off the last snapshot, because a snapshot is only taken when
-something is pressed: on a running clock the old reading sat still for an hour
-and then jumped by the whole hour's accrual the moment anything refreshed it,
-which reads as the app inventing time.
+The rules around it are unchanged: time only moves between mutual follows,
+anonymous accounts cannot send, and at most 7 days can leave one account per
+rolling 24 hours. Two follow from the new model: you can send at most what your
+clock reads, and the recipient's clock has to be running - a stopped one has
+nowhere for the time to land, and a lapsed one is what reviving is for.
 
-Reviving a broken streak restores **half** its lost length and costs the reviver
-that restored stretch's own accrual — 10% of it. A 400-day streak comes back at
-200 days and costs 20 days of giveable time, more than most single users hold.
-That is intentional: a headline rescue takes more than one friend.
+Reviving a broken streak restores **half** its lost length and costs the
+reviver a tenth of that restored stretch, **paid off their own clock**. A
+400-day streak comes back at 200 days and costs its rescuer 20 days of their
+own run. That is intentional: a headline rescue takes more than one friend.
 
-Balances are sums over a ledger, never a column. That makes the donation and
-reception boards a `GROUP BY` and gives a free audit trail.
+The gift ledger is still the audit trail and what the given/received/rescues
+boards count. Reads no longer sum it: each profile carries running totals,
+kept in step with the ledger by a trigger in the same transaction.
+
+An open app polls a one-row `uptime_pulse` every 30 seconds, so time a friend
+sends you appears on your clock within half a minute - the full snapshot is
+only re-read when the pulse says something moved.
+
+### Scale
+
+Every read now costs what it returns rather than what the table holds.
+Measured on PostgreSQL 16 with 300,000 accounts (`0013_clock_transfers_and_scale.sql`):
+
+| Read | Before | After |
+|---|---|---|
+| A leaderboard (each of six) | 254 ms - 5.9 s | 0.3 - 4.8 ms |
+| Your rank on a board | 0.5 - 1.8 s | ~5 ms (board size cached 10 min) |
+| Snapshot, account at the 2,000-follow cap | 46 ms | 16 ms |
+
+Boards read partial indexes and stop after the rows they return; the two whose
+value is partly still running ("Hall of fame", "Career total") merge the top N
+of each part. The new boards and ranks were checked against a brute-force
+evaluation of the old definitions: identical top-100 on all six boards and
+identical placings for all 120,000 account/board pairs of a 20,000-account set.
+
+On the client, the per-frame clock used to live at the top of the tree, so the
+whole app - every friend row, every board row - re-rendered about 60 times a
+second to move the timer's last digits. Only the stopwatch face subscribes to
+it now; the People tab went from ~61 renders a second to 1.
 
 ---
 
@@ -123,9 +152,10 @@ reception boards a `GROUP BY` and gives a free audit trail.
 
 ### What was verified, and how
 
-- **78 automated tests** over the domain rules and the store, including lapse
-  timing, cap enforcement, revive pricing, the one-way-follow gate, window
-  anchoring, reload-from-storage, and every account rule (anonymous accounts
+- **100 automated tests** over the domain rules and the store, including lapse
+  timing, cap enforcement, revive pricing, clock-to-clock transfers, the
+  one-way-follow gate, window anchoring, reload-from-storage, and every
+  account rule (anonymous accounts
   refused from sending and reviving, excluded from every board, and the streak
   surviving an upgrade).
 - **The SQL was applied to a real PostgreSQL 17** and exercised end to end:
@@ -168,9 +198,14 @@ supabase functions deploy sweep-lapsed
 supabase functions deploy nudge-check-in
 ```
 
+No direct Postgres access? Paste `supabase/deploy.sql` into the SQL editor
+instead. It is generated from the migrations - run `npm run db:bundle` after
+changing one, rather than editing it by hand.
+
 Then schedule both — see the header comment in each function for the
-`cron.schedule` call. `sweep-lapsed` is idempotent, so running it hourly costs
-nothing.
+`cron.schedule` call. `sweep-lapsed` is idempotent and drains any backlog in
+5,000-row batches, so running it hourly costs nothing. Both call functions
+that only the service role may execute.
 
 Note that every action already sweeps the specific rows it touches, so the
 scheduled job is a backstop for accounts nobody is interacting with rather than
@@ -195,11 +230,12 @@ can explain a refusal before the round trip without being the thing enforcing
 it.
 
 Signing up is an **upgrade, not a new account**: Supabase keeps the same user id
-when an anonymous user attaches an email, so the streak, the history and the
-giveable balance all carry over. Losing a 95-day run to make an account would be
-the worst possible moment to ask for one. `auth.users.is_anonymous` flips itself
-on that upgrade, which is why nothing of ours has to be kept in sync — the
-account is ranked on the next read.
+when an anonymous user attaches an email, so the running clock and the history
+carry over. Losing a 95-day run to make an account would be the worst possible
+moment to ask for one. `auth.users.is_anonymous` flips itself on that upgrade;
+the boards read a mirror of it on `profiles`, refreshed by `uptime_open`, which
+is the first thing the app calls after the upgrade - so the account is ranked on
+its next read.
 
 ---
 
@@ -215,7 +251,9 @@ account is ranked on the next read.
 - **The name.** `Uptime` is the working name and is used throughout, including
   the bundle identifier `com.yungdice.uptime`. It has not had the gut check
   against the Yung Dice brand that the build prompt asked for.
-- **`ACCRUAL_RATE`, `CHECK_IN_WINDOW` and the revive price** are the three
+- **`CHECK_IN_WINDOW`, the revive price and the daily send cap** are the
   numbers that decide how the game feels, and they are guesses. They are named
-  constants in `src/core/constants.ts` with matching SQL functions in
-  `0001_schema.sql`; changing them is a one-line edit in each.
+  constants in `src/core/constants.ts` with matching SQL functions
+  (`0001_schema.sql`, `0013_clock_transfers_and_scale.sql`); changing one is a
+  one-line edit in each. Now that gifts move real clock time, the cap is also
+  what limits friends pooling time into one account to top "Running now".

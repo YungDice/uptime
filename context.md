@@ -11,8 +11,8 @@ platform.
 
 Uptime is a React + TypeScript single-page app wrapped in Tauri v2, backed by
 Supabase (PostgreSQL + Edge Functions). It is a social streak game: a stopwatch
-you never stop, whose time becomes a currency you can bank, gift, and spend
-reviving a friend's broken streak. The entire app is four tabs and roughly 4.5k
+you never stop, whose time is a currency - send some and it moves off your
+clock onto a friend's, or spend it reviving a friend's broken streak. The entire app is four tabs and roughly 4.5k
 lines of TypeScript.
 
 **The load-bearing idea:** nothing ticks. There is no running process and no
@@ -30,11 +30,13 @@ a year of the server being asleep.
 | `src/data/` | One store interface, two adapters that must behave identically. |
 | `src/components/` | Presentational. `Shell`, `TabBar`, `List`, `StopwatchFace`, `FriendList`, `Sheet`, `SendSheet`, `ConfirmSheet`, `LiveTime`, `Medal`, `Podium`, `Avatar`, `ReminderOffer`. |
 | `src/screens/` | The four tabs: `Home`, `People`, `Boards`, `Account` — plus `Profile`, which is somebody else's page and opens as a sheet over any of them. |
-| `src/hooks/` | `useSession` (owns store + clock + notices), `useNow` / `useFractionalNow`. |
+| `src/hooks/` | `useSession` (owns store + clock + notices + the pulse), `useNow` / `useFractionalNow`. |
 | `src/notifications/` | Client half of the check-in prompt. |
 | `src/platform.ts` | Which platform the bundle is running on. |
 | `src/components/ErrorBoundary.tsx` | The only thing standing between a render error and a black window. |
-| `supabase/migrations/` | `0001`–`0011`. The rules again, in SQL. |
+| `supabase/migrations/` | `0001`–`0013`. The rules again, in SQL. |
+| `supabase/deploy.sql` | Every migration concatenated, for the SQL editor. Generated: `npm run db:bundle`. |
+| `scripts/` | `build-deploy-sql.mjs`, which generates the above. |
 | `supabase/functions/` | `sweep-lapsed`, `nudge-check-in`. |
 | `src-tauri/` | The native shell. One Rust crate for all platforms. |
 
@@ -80,13 +82,22 @@ test standing behind it. Read this list before changing streak or ledger logic.
    run), not by the status. Without that, a returning user gets a zeroed
    counter and no explanation.
 
-5. **Balances are sums over the gift ledger, never a stored column.** This gives
-   a free audit trail and makes the donation boards a `GROUP BY`.
+5. **The time you can send is your running clock, and a gift moves clocks.**
+   `transfer()` in `core/economy.ts`: the sender's `streakStart` moves later by
+   the amount, the recipient's earlier. There is no bank and no accrual. The
+   gift ledger is still the audit trail and what the given/received/rescues
+   boards count, but reads take those totals from counters on `profiles`
+   (`total_sent`, `total_received`, `rescues`, `best_run_seconds`), which a
+   trigger on `gifts` keeps in step with the ledger - including when an
+   account deletion cascades gifts away. If you add a way to change the
+   ledger or file a run, keep the counters true or the boards drift.
 
 6. **Anonymous accounts play but do not rank and cannot send.** Enforced in SQL
    (`0009_accounts.sql`) *and* mirrored in `LocalStore`. The client mirror
    exists so the UI can explain a refusal before the round trip — it is not the
-   thing enforcing it.
+   thing enforcing it. The boards filter on `profiles.is_anonymous`, a mirror
+   of `auth.users.is_anonymous` synced by `uptime_open` (the first call after
+   an upgrade); the send and revive gates still read `auth.users` directly.
 
 7. **Sign-up is an upgrade, not a new account.** Supabase keeps the same user id
    when an anonymous user attaches an email, so streak, history and balance all
@@ -94,12 +105,15 @@ test standing behind it. Read this list before changing streak or ledger logic.
 
 8. **`splitStopwatch` scales to integer milliseconds before splitting.** At ~95
    days the elapsed float is large enough that `x - Math.floor(x)` returns
-   `0.4199…` for `0.42`, so flooring would render 41 instead of 42. Do not
+   `0.4199…` for `0.42`, so flooring would render 419 ms instead of 420. Do not
    "simplify" that back to a fractional subtraction.
 
-9. **Hundredths are cosmetic and local.** The server stores whole seconds.
-   `useFractionalNow` animates from the anchored local clock and resyncs against
-   `SyncedClock` every 5s.
+9. **Milliseconds are cosmetic and local, and only the face pays for them.**
+   The server stores whole seconds. The face reads `days` on top and
+   `HH:MM:SS:mmm` beneath. `StopwatchFace` subscribes to `useFractionalNow`
+   itself; `useSession` hands out the `SyncedClock`, never a per-frame value.
+   Holding the frame clock in `useSession` re-rendered the whole app ~60 times
+   a second, friend lists and boards included - keep it at the leaf.
 
 10. **Every snapshot must carry an `account`, and the SQL cannot supply one.**
     `account` comes from a separate RPC (`uptime_account`, which reads
@@ -115,13 +129,12 @@ test standing behind it. Read this list before changing streak or ledger logic.
     back but a restart.
 
 12. **The giveable figure is derived on the client, not read off the snapshot.**
-    `liveGiveable(snapshot, now)` in `src/data/store.ts`, and every surface that
-    offers to spend time takes it from the single call in `App`. `Snapshot.balance`
-    is the server's reading at the instant the snapshot was taken, and snapshots
-    are only taken when something is pressed — so on a running clock the figure
-    stood still for an hour and then leapt by the hour's accrual on the next
-    action. It shipped as a bug report reading "banking went from 5 to 13
-    minutes". If you add a place that shows or spends it, take the live value.
+    `liveGiveable(snapshot, now)` in `src/data/store.ts` - which is simply your
+    running clock (`sendable(status)`), zero when stopped or lapsed. Every
+    surface that offers to spend time takes it from the single call in `App`.
+    `Snapshot.balance` is the clock read at the instant the snapshot was taken,
+    and snapshots are only taken when something is pressed, so reading it
+    would freeze the ceiling on a clock that is visibly still running.
 
 13. **A theme token nothing uses as a utility class is deleted.** Tailwind v4
     tree-shakes `@theme`, and `var(--color-gold)` read from an inline `style` is
@@ -145,18 +158,48 @@ test standing behind it. Read this list before changing streak or ledger logic.
     suppresses implicit Enter-to-submit too, so the keyboard did not save it.
     A `Capsule` in a form needs either `onClick` or `type="submit"`.
 
+16. **Two clocks change together, so lock both rows in id order first.**
+    `uptime_send_time` and `uptime_revive` take `for update` on both profiles
+    ordered by id *before* the per-user sweeps (which lock too). Locking the
+    caller first and the other party second deadlocks two people sending to
+    each other at the same moment.
+
+17. **Every board is an index scan that stops.** One partial index per board
+    in `0013`, each `where ... and not is_anonymous`, and `uptime_board_top`
+    reads them with a LIMIT. A new board needs its index, a branch in
+    `uptime_board_top`, in `uptime_my_rank` and in `uptime_board_size`, and the
+    same predicate spelled identically, or the planner will not use the index.
+    Time-window tests are written against the bare column (`last_seen <=
+    cutoff`), never as `now >= last_seen + window`: Postgres will not
+    rearrange arithmetic to reach an index.
+
+18. **A server-side helper is not callable by clients.** Postgres grants
+    EXECUTE to PUBLIC and Supabase adds `anon`/`authenticated`, so before
+    `0013` the anon key could call `uptime_touch(anyone)`, run the sweep and
+    read every push token. Any new `security definer` function that acts on an
+    id it is given needs a `revoke execute ... from public, anon,
+    authenticated`, and a grant to `service_role` if an Edge Function calls it.
+
+19. **An open app polls `uptime_pulse` every 30s; it is not a sign of life.**
+    One primary-key read. `useSession` only re-reads the snapshot when the
+    pulse says the clock or the received total moved. Do not make the pulse
+    touch `last_seen` - a tab left open is not a person - and do not replace it
+    with a periodic full refresh, which multiplies the heaviest read by every
+    open client.
+
 ### The tunable numbers
 
 `src/core/constants.ts`, mirrored by SQL functions in `0001_schema.sql`.
 Changing one is a one-line edit in each place:
 
 - `CHECK_IN_WINDOW` = 60 days — how long you may go unseen before lapsing.
-- `ACCRUAL_RATE` = 0.1 — banked time as a fraction of time kept.
-- `REVIVE_RESTORE_FRACTION` = 0.5 and `REVIVE_COST_PER_RESTORED_SECOND` = 0.1.
-- `MAX_SENT_PER_DAY` = 7 days (rolling 24h cap).
+- `REVIVE_RESTORE_FRACTION` = 0.5 and `REVIVE_COST_PER_RESTORED_SECOND` = 0.1
+  (SQL: `uptime_revive_cost_rate()`), paid off the reviver's clock.
+- `MAX_SENT_PER_DAY` = 7 days (rolling 24h cap). Also 120 sends an hour, SQL
+  only (`uptime_rate_ok('send_time', ...)`).
 - `MIN_ACCOUNT_AGE_FOR_LEADERBOARD_CREDIT` = 14 days.
 
-These three decide how the game feels and the README is explicit that they are
+These decide how the game feels and the README is explicit that they are
 guesses.
 
 ---
@@ -189,8 +232,9 @@ guesses.
 ```bash
 npm install
 npm run dev            # browser, http://localhost:1420
-npm test               # 78 tests, ~0.4s
-npm run typecheck      # tsc --noEmit
+npm test               # 100 tests, ~0.5s
+npm run typecheck      # app, plus vite.config.ts against tsconfig.node.json
+npm run db:bundle      # regenerate supabase/deploy.sql after editing a migration
 npm run desktop:dev    # same app in a Tauri window
 npm run desktop:build  # .exe + MSI + NSIS
 ```
@@ -333,16 +377,16 @@ tools installed:
   not expose FCM/APNs tokens, so the token half needs a push plugin that is
   not yet a dependency. `uptime_register_device(platform, token)` is waiting
   in `0007_push.sql`.
-- **Supabase was validated against stock PostgreSQL 17 with an `auth` schema
-  shim**, not a live project. `auth.uid()` and `auth.users.is_anonymous` are
-  the integration points to watch.
+- **Supabase was validated against stock PostgreSQL (17, and 16 for `0013`)
+  with an `auth`/`storage` schema shim**, not a live project. `auth.uid()` and
+  `auth.users.is_anonymous` are the integration points to watch.
 - **Discovery is one handle field on the People tab.** No search, no
   suggestions, no invite links. Gifts are gated on a *mutual* follow, so a
   fresh account can do nothing until it follows someone and is followed back.
   The README flags this as the next thing worth designing.
 - **The name `Uptime`** is a working title, baked into the bundle identifier
   `com.yungdice.uptime`.
-- **No component tests.** The 78 tests cover `src/core` and the store only;
+- **No component tests.** The 100 tests cover `src/core` and the store only;
   there is no DOM test environment installed (no jsdom, no Testing Library), so
   `useBackStack` and the screens are verified by driving a browser rather than
   by a test in the repo. Adding a DOM stack is a real decision, not an
@@ -363,7 +407,7 @@ this codebase reads as foreign.
 
 Design language is documented in `DESIGN.md`: the iPhone Clock app's grammar,
 true black, tabular figures, hairlines, and colour used only to name a system
-(orange = live run, green = banked, red = lapse). Nothing else gets colour.
+(orange = live run, green = time being given, red = lapse). Nothing else gets colour.
 
 **Git:** the repo owner makes all commits. Stage freely; never commit, push,
 tag or open a PR.

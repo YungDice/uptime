@@ -62,41 +62,41 @@ describe("toDays", () => {
 });
 
 describe("splitStopwatch", () => {
-  it("splits into days, a padded clock, and hundredths", () => {
+  it("splits into days, then hours, minutes, seconds and milliseconds", () => {
     const p = splitStopwatch(95 * DAY + 4 * HOUR + 31 * MINUTE + 9 + 0.42);
     expect(p.days).toBe(95);
+    expect([p.hours, p.minutes, p.seconds, p.millis]).toEqual(["04", "31", "09", "420"]);
     expect(p.clock).toBe("04:31:09");
-    expect(p.hundredths).toBe("42");
   });
 
   it("pads every field so the readout never changes width", () => {
-    const p = splitStopwatch(1.05);
+    const p = splitStopwatch(1.005);
     expect(p.clock).toBe("00:00:01");
-    expect(p.hundredths).toBe("05");
+    expect(p.millis).toBe("005");
   });
 
-  it("floors hundredths so seconds and hundredths never disagree", () => {
-    // 1.999s must read 01 . 99, never 01 . 00 of the next second.
+  it("never lets seconds and milliseconds disagree", () => {
+    // 1.999s must read 01 : 999, never 01 : 000 of the next second.
     const p = splitStopwatch(1.999);
     expect(p.clock).toBe("00:00:01");
-    expect(p.hundredths).toBe("99");
+    expect(p.millis).toBe("999");
   });
 
   it("clamps negatives", () => {
     const p = splitStopwatch(-3);
     expect(p.days).toBe(0);
     expect(p.clock).toBe("00:00:00");
-    expect(p.hundredths).toBe("00");
+    expect(p.millis).toBe("000");
   });
 });
 
 describe("splitStopwatch precision", () => {
-  it("keeps hundredths exact at streak lengths that matter", () => {
+  it("keeps milliseconds exact at streak lengths that matter", () => {
     // A 412-day run: the float is large enough that a fractional subtraction
-    // loses the hundredth. Every one of these must come back exact.
-    for (const h of [0, 1, 5, 42, 99]) {
-      const p = splitStopwatch(412 * DAY + 4 * HOUR + 31 * MINUTE + 9 + h / 100);
-      expect(p.hundredths).toBe(String(h).padStart(2, "0"));
+    // loses the millisecond. Every one of these must come back exact.
+    for (const ms of [0, 1, 5, 42, 420, 999]) {
+      const p = splitStopwatch(412 * DAY + 4 * HOUR + 31 * MINUTE + 9 + ms / 1000);
+      expect(p.millis).toBe(String(ms).padStart(3, "0"));
       expect(p.days).toBe(412);
       expect(p.clock).toBe("04:31:09");
     }

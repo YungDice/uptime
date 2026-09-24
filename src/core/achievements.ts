@@ -1,5 +1,5 @@
 import { DAY, MILESTONE_DAYS } from "./constants";
-import type { Seconds } from "./time";
+import { formatDuration, type Seconds } from "./time";
 
 /**
  * Something the account has done, worked out at read time.
@@ -146,7 +146,9 @@ export function achievementsFor(input: AchievementInput): Achievement[] {
     out.push({
       id: "given",
       label: "Benefactor",
-      detail: `${Math.floor(input.totalSent / DAY)}d given away`,
+      // A duration, not whole days: time now comes off a running clock, so an
+      // hour is a real gift and "0d given away" undersold every one of them.
+      detail: `${formatDuration(input.totalSent)} given away`,
       earned: true,
       glyph: "given",
       metal: "bank",

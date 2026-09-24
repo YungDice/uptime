@@ -85,7 +85,9 @@ function FriendRow({
   const status = statusOf(friend.streak, now);
   const live = isRunning(status);
   const canAfford = friend.revive ? giveable >= friend.revive.cost : false;
-  const canGive = friend.connected && giveable > 0;
+  // A gift lands on their running clock, so a stopped one has nowhere to put
+  // it. A lapsed one gets the Revive button instead.
+  const canGive = friend.connected && giveable > 0 && live;
   const { days, clock } = splitStopwatch(live ? status.elapsed : 0);
 
   // A second line is only worth its height when it has something to say. A

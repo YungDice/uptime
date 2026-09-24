@@ -5,6 +5,7 @@ import type {
   Account,
   ActionResult,
   PublicProfile,
+  Pulse,
   RankInfo,
   Snapshot,
   UptimeStore,
@@ -96,6 +97,15 @@ export class SupabaseStore implements UptimeStore {
     this.syncClock(snapshot.serverNow);
     this.lastAccount = account;
     return { ...snapshot, account };
+  }
+
+  async pulse(): Promise<Pulse> {
+    // One primary-key read (`uptime_pulse`), not the snapshot: this runs on a
+    // timer in every open client, so its cost is multiplied by however many
+    // people have the app open at once.
+    const pulse = await this.rpc<Pulse>("uptime_pulse", {});
+    this.syncClock(pulse.serverNow);
+    return pulse;
   }
 
   async signUp(email: string, password: string, handle: string): Promise<ActionResult> {

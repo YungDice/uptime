@@ -13,13 +13,6 @@ import { Shell } from "@/components/Shell";
 import { formatDuration } from "@/core";
 import type { Tab } from "@/components/TabBar";
 
-const TITLES: Record<Tab, string> = {
-  clock: "Uptime",
-  people: "People",
-  boards: "Boards",
-  account: "Account",
-};
-
 export function App() {
   const store = useMemo(() => createStore(), []);
   const session = useSession(store, "you");
@@ -56,7 +49,7 @@ export function App() {
 
   if (session.error && !snapshot) {
     return (
-      <Shell title="Uptime" tab={tab} onTab={setTab}>
+      <Shell tab={tab} onTab={setTab}>
         <p className="px-5 pt-16 text-center text-callout text-lapse">{session.error}</p>
       </Shell>
     );
@@ -64,7 +57,7 @@ export function App() {
 
   if (!snapshot) {
     return (
-      <Shell title="Uptime" tab={tab} onTab={setTab}>
+      <Shell tab={tab} onTab={setTab}>
         <p className="px-5 pt-16 text-center text-callout text-label-2">Reading your clock</p>
       </Shell>
     );
@@ -72,8 +65,8 @@ export function App() {
 
   // One derivation, one place. Every surface that offers to spend time - the
   // home panel, the friend rows, the send sheet, the profile - has to agree
-  // about how much there is, and the number is moving, so they cannot each ask
-  // the snapshot separately and get the same answer.
+  // about how much there is. It is your running clock, so it is moving, and
+  // they cannot each ask the snapshot separately and get the same answer.
   const giveable = liveGiveable(snapshot, session.now);
   const stoppedAfter = snapshot.me.streak.streakStart;
 
@@ -110,7 +103,6 @@ export function App() {
 
   return (
     <Shell
-      title={TITLES[tab]}
       tab={tab}
       onTab={(next) => {
         // A tab press is a move to somewhere else, so it takes the overlay with
@@ -142,7 +134,7 @@ export function App() {
         <Home
           snapshot={snapshot}
           now={session.now}
-          fractionalNow={session.fractionalNow}
+          clock={session.clock}
           justCheckedIn={justCheckedIn}
           onCheckIn={() => void checkIn()}
           onStart={() => void session.run(() => store.startStreak())}
@@ -216,6 +208,7 @@ export function App() {
         <SendSheet
           friend={sending}
           giveable={giveable}
+          now={session.now}
           sentToday={snapshot.sentInLastDay}
           onCancel={() => setSending(null)}
           onConfirm={(amount) => void confirmSend(amount)}
@@ -234,7 +227,8 @@ export function App() {
                 ? null
                 : `It has been going for ${formatDuration(Math.max(0, session.now - stoppedAfter))}.`}{" "}
               Stopping on purpose cannot be undone - a revive only brings back a streak that lapsed.
-              The {formatDuration(giveable)} you have to give stays yours.
+              The time you send comes off this clock, so until you start a new one you will have
+              none to give, and gifts from friends will have nowhere to land.
             </>
           }
           onCancel={() => setConfirmingStop(false)}

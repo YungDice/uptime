@@ -28,12 +28,6 @@ typography:
     lineHeight: 1
     letterSpacing: "-0.03em"
     fontFeature: "tnum 1, ss01 1"
-  screen:
-    fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "34px"
-    fontWeight: 700
-    lineHeight: 1.05
-    letterSpacing: "-0.02em"
   title:
     fontFamily: "Inter Variable, ui-sans-serif, system-ui, sans-serif"
     fontSize: "22px"
@@ -188,11 +182,11 @@ components:
 
 **Creative North Star: "The Clock That Was Never Stopped"**
 
-Uptime wears the iPhone Clock app's grammar because the product *is* that screen: a stopwatch somebody started and never stopped. The Timer's ring with its 60-tick track carries the check-in window; the Stopwatch's face carries the run, down to hundredths. Nothing quotes the Clock app decoratively — the whole surface is built out of its materials: a near-black ground, light-weight white numerals with tabular figures, hairline separators, full-bleed ruled rows, and pill controls filled with a low-alpha tint of their own colour.
+Uptime wears the iPhone Clock app's grammar because the product *is* that screen: a stopwatch somebody started and never stopped. The Timer's ring with its 60-tick track carries the check-in window; the Stopwatch's face carries the run, days on top and `hours:minutes:seconds:milliseconds` beneath. Nothing quotes the Clock app decoratively — the whole surface is built out of its materials: a near-black ground, light-weight white numerals with tabular figures, hairline separators, full-bleed ruled rows, and pill controls filled with a low-alpha tint of their own colour.
 
-Density is high and even. Every screen is one bounded column of rows on the page colour, inset 20px from the leading edge, with a collapsing large title above and a solid tab bar below. There is no card stack, no flame, no gradient hero, no dashboard widgetry. The refused reference is explicit: the card-stack streak dashboard and its flame.
+Density is high and even. Every screen is one bounded column of rows on the page colour, inset 20px from the leading edge, with no screen title - each screen opens on its own content, because a title that repeated the lit tab label said nothing - and a solid tab bar below. There is no card stack, no flame, no gradient hero, no dashboard widgetry. The refused reference is explicit: the card-stack streak dashboard and its flame.
 
-Colour is a law rather than a palette. Orange owns the live run, green owns banked time, red owns a lapse, grey owns everything else — and nothing else in the app gets an accent. Depth is done entirely with tonal layering (#0c0c0e → #1c1c1e → #2c2c2e) and hairlines; there is not a single box-shadow in the build.
+Colour is a law rather than a palette. Orange owns the live run, green owns time being given, red owns a lapse, grey owns everything else — and nothing else in the app gets an accent. Depth is done entirely with tonal layering (#0c0c0e → #1c1c1e → #2c2c2e) and hairlines; there is not a single box-shadow in the build.
 
 **Key Characteristics:**
 - Near-black ground (#0c0c0e) - lifted just off true black so a sheet reads as the next step up rather than as a different material
@@ -211,7 +205,7 @@ A near-monochrome dark field where three saturated signal colours each own one s
 - **Clock Orange** (`{colors.run}`): The live run. Ring stroke while the streak is running, the active tab, the primary capsule, inline "Create one" links, follow/save actions, the focus ring, the selection tint, and the browser `accent-color` / `caret-color`.
 
 ### Secondary
-- **Banked Green** (`{colors.bank}`): Time that has been earned and can be given away. Balance rows, Send controls, the handoff sweep gradient, and good-news notices.
+- **Giving Green** (`{colors.bank}`): Time being given - which is your own running clock, since what you send comes straight off it. The give panel's figure, Send controls, the handoff sweep gradient, and good-news notices. The token keeps its old name, `bank`.
 
 ### Tertiary
 - **Lapse Red** (`{colors.lapse}`): A streak that ran out. The Stop control, broken-friend rows, validation messages, error notices, and the ring when a run has lapsed.
@@ -223,11 +217,11 @@ A near-monochrome dark field where three saturated signal colours each own one s
 - **Raise 2** (`{colors.raise-2}`): The second step. The ring's unfilled track, the sheet's grab handle, unselected preset buttons.
 - **Hairline** (`{colors.hairline}`): Every separator and border, plus the 60 tick marks around the ring.
 - **Label** (`{colors.label}`): Primary text and the running figure.
-- **Label 2** (`{colors.label-2}`): Secondary text, the hundredths, inactive tabs, placeholders, captions.
+- **Label 2** (`{colors.label-2}`): Secondary text, the milliseconds, inactive tabs, placeholders, captions.
 - **Label 3** (`{colors.label-3}`): Idle and stopped state text, and leaderboard rank numerals. Chosen at 5.06:1 on black rather than the iOS tertiary grey, which measures 3.06:1 and cannot carry real text.
 
 ### Named Rules
-**The One System One Colour Rule.** Orange means the run, green means banked time, red means a lapse, grey means everything else. A colour never appears for emphasis, decoration, category, or variety. If a new element has no system, it is grey.
+**The One System One Colour Rule.** Orange means the run, green means time being given, red means a lapse, grey means everything else. A colour never appears for emphasis, decoration, category, or variety. If a new element has no system, it is grey.
 
 **The Tint-18 Rule.** Coloured controls are never solid. They are a fill of `color-mix(in srgb, <colour> 18%, transparent)` with the full-strength colour as the label, so a control reads as its system at a glance. A selected state may go one notch up (20–22%); nothing goes solid.
 
@@ -248,8 +242,7 @@ Eleven steps. Each is a Tailwind utility of the same name (`text-display`,
 so a call site names the role and gets the whole decision. No screen writes a
 pixel size; `text-[20px]` in a diff is a bug.
 
-- **`text-display`** (300, 44px, lh 1, -0.03em, tabular): The ticking readout, wherever it appears — the amount in the send sheet, a profile's counter, the banked total on the give panel. One size, because they are one thing seen in three places.
-- **`text-screen`** (700, 34px, -0.02em): The large screen title in the scroll header; fades to zero opacity as it collapses.
+- **`text-display`** (300, 44px, lh 1, -0.03em, tabular): The ticking readout, wherever it appears — the amount in the send sheet, a profile's counter, the sendable figure on the give panel. One size, because they are one thing seen in three places.
 - **`text-title`** (600, 22px, -0.01em): Every heading below that — a sheet's title, a person's name on their profile or account.
 - **`text-numeral`** (700, 22px, tabular): The figure struck into a podium block. Same size as a title and deliberately its own token: it is bold and untracked, and would follow a title's negative tracking into nonsense.
 - **`text-body`** (400, 17px): Row labels, row values, capsule labels, input text.
@@ -267,11 +260,11 @@ pixel size; `text-[20px]` in a diff is a bug.
 
 ## Layout
 
-One bounded column, centred, `max-width: 448px`, with left and right hairline borders above the `lg` breakpoint so the phone layout does not stretch across a desktop window (this ships as a Tauri window as well as a web app). Inside it: an absolutely-positioned compact bar at the top, a single scroll container, and a tab bar pinned to the bottom edge.
+One bounded column, centred, `max-width: 448px`, with left and right hairline borders above the `lg` breakpoint so the phone layout does not stretch across a desktop window (this ships as a Tauri window as well as a web app). Inside it: a single scroll container and a tab bar pinned to the bottom edge.
 
-Rhythm is a 4px grid; the recurring steps are 4 / 8 / 12 / 20 / 28px. Rows have a 52px minimum height with 10px vertical padding, sections are separated by 28px, and the scrolling main reserves 112px of bottom padding for the tab bar. Safe-area insets are added to the top header, the compact bar, the tab bar, and the sheet's bottom padding.
+Rhythm is a 4px grid; the recurring steps are 4 / 8 / 12 / 20 / 28px. Rows have a 52px minimum height with 10px vertical padding, sections are separated by 28px, and the scrolling main reserves 112px of bottom padding for the tab bar. Safe-area insets are added to the column's top edge (outside the scroller, so content scrolls beneath a still edge rather than under the status bar), the tab bar, and the sheet's bottom padding.
 
-Scroll behaviour: the 34px title fades out and the compact bar fades in over 200ms, with hysteresis (collapse past 44px, restore under 24px) so a title resting on the threshold cannot flicker. A tab change resets scroll and restores the large title.
+Scroll behaviour: a tab change resets scroll to the top. There is no title to collapse.
 
 ### Named Rules
 **The One Inset Definition Rule.** The leading margin is 20px and it is defined in exactly one place per element type: rows supply their own `padding-left: 20px`, and a section's leading rule is a separate 1px element with `margin-left: 20px`. Never put the inset on a section container that already holds padded rows — that path produced three different margins across four screens.
@@ -280,7 +273,7 @@ Scroll behaviour: the 34px title fades out and the compact bar fades in over 200
 
 ## Elevation & Depth
 
-There are no shadows in this system — not ambient, not structural, not on hover. Depth is entirely tonal: `#0c0c0e` ground, `#1c1c1e` for a raised surface, `#2c2c2e` for the step above that, and `#38383a` hairlines to divide. The only blurred material in the build is the collapsed title bar, which sits on 92% page with `saturate(180%) blur(24px)`; the tab bar deliberately does **not** use a material, because translucency over a ground this dark is invisible by definition and at 94% it let content bleed through under the labels.
+There are no shadows in this system — not ambient, not structural, not on hover. Depth is entirely tonal: `#0c0c0e` ground, `#1c1c1e` for a raised surface, `#2c2c2e` for the step above that, and `#38383a` hairlines to divide. There is no blurred material in the build (the collapsing title bar that had one is gone); the tab bar deliberately does **not** use a material, because translucency over a ground this dark is invisible by definition and at 94% it let content bleed through under the labels.
 
 ### Named Rules
 **The No Card Rule.** Persistent content is never boxed. Lists are full-bleed rows divided by hairlines and a screen's content sits directly on the void. Rounded tonal surfaces exist only for things that arrive and leave — the send sheet, the reminder offer, a notice banner — and even those are flat fills with no shadow and no border beyond the sheet's top hairline.
@@ -323,12 +316,12 @@ There are no cards. Transient surfaces only:
 
 ### Navigation
 - **Tab bar:** Pinned to the bottom of the column, a solid `void` fill (never translucent), a single hairline top border, four equal flex items. Each is an authored 26px SVG icon at 1.6 stroke weight with a 10px medium label 4px beneath. Active is `run`, inactive is `label-2`, and `aria-current="page"` marks the active tab. A 6px `run` dot pins to the icon's top-right while the session is still anonymous.
-- **Header:** A 34px bold title inset 20px, fading into a centred 17px semibold compact bar on scroll.
+- **Header:** None. The tab bar already names the screen; the only thing at the top is the `Local` badge, right-aligned, when the app is running without a backend.
 
 ### Stopwatch Face (signature)
-The Timer's ring around the Stopwatch's face, and both halves are load-bearing. The ring is the check-in window draining — the only way this streak can die — animated on `stroke-dashoffset` over 600ms `cubic-bezier(0.16,1,0.3,1)`. The face is the run: the day count at 76px light, with its "days" unit hung outside the flow (absolutely positioned at `left: 100%`, plus 8px) so the numeral, the clock, and the ring all share one vertical axis; beneath it the `HH:MM:SS` in white with the `.hundredths` in `label-2`.
+The Timer's ring around the Stopwatch's face, and both halves are load-bearing. The ring is the check-in window draining — the only way this streak can die — animated on `stroke-dashoffset` over 600ms `cubic-bezier(0.16,1,0.3,1)`. The face is the run: the day count at 76px light, with its "days" unit hung outside the flow (absolutely positioned at `left: 100%`, plus 8px) so the numeral, the clock, and the ring all share one vertical axis; beneath it `HH:MM:SS:mmm` - hours, minutes and seconds in white, milliseconds in `label-2` - with each group captioned `HR` / `MIN` / `SEC` / `MS` in 11px `label-3` so the readout says which part is which.
 
-The hundredths tick on `requestAnimationFrame` and fall back to whole seconds under `prefers-reduced-motion`. The readout is `aria-hidden` and the enclosing section carries an `aria-label` instead, because a field changing a hundred times a second must never be announced.
+The milliseconds tick on `requestAnimationFrame` and fall back to whole seconds under `prefers-reduced-motion`. Only the face subscribes to the frame clock; everything else on screen ticks once a second. The readout is `aria-hidden` and the enclosing section carries an `aria-label` instead, because a field changing every frame must never be announced.
 
 ## Do's and Don'ts
 
@@ -345,7 +338,7 @@ The hundredths tick on `requestAnimationFrame` and fall back to whole seconds un
 ### Don't:
 - **Don't** add a box-shadow anywhere, for any state.
 - **Don't** put persistent content in a card; rounded tonal surfaces are for sheets, notices, and transient offers only.
-- **Don't** introduce a fifth colour, or reuse `run` / `bank` / `lapse` for anything other than the live run, banked time, and a lapse.
+- **Don't** introduce a fifth colour, or reuse `run` / `bank` / `lapse` for anything other than the live run, time being given, and a lapse.
 - **Don't** make the tab bar translucent — over a ground this dark a material reads as a content leak, not as depth.
 - **Don't** tint both a ring and the figure inside it.
 - **Don't** add a third authored animation. Motion is `confirm` (the check-in press) and `handoff` (the sweep along the recipient's row); `rise` is entry-only for sheets and notices.

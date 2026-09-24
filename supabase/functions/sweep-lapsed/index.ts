@@ -20,6 +20,12 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+/** Rows per statement. */
+const BATCH = 5000;
+
+/** Stop starting new batches after this long; well inside the function limit. */
+const BUDGET_MS = 60_000;
+
 Deno.serve(async (req: Request) => {
   // Only the service role may sweep; a lapse is a destructive act on someone
   // else's streak and must never be reachable with an anon key.
@@ -33,17 +39,30 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false },
   });
 
-  // Bounded per invocation so one pass cannot hold a long transaction over the
-  // whole table; the next run picks up whatever is left.
-  const { data, error } = await client.rpc("uptime_sweep_lapsed", { p_limit: 5000 });
+  // Batched, so no single statement holds a long transaction over the table -
+  // but drained, not one batch per run. With one fixed batch a day, a backlog
+  // bigger than the batch (a launch cohort all going quiet in the same week)
+  // took days to clear, and every one of those streaks sat on the boards as
+  // running until it was reached. The budget keeps the run well inside the
+  // function's wall-clock limit; whatever is left is next run's.
+  const started = Date.now();
+  let swept = 0;
+  let passes = 0;
 
-  if (error) {
-    console.error("sweep failed", error);
-    return json({ error: error.message }, 500);
+  for (;;) {
+    const { data, error } = await client.rpc("uptime_sweep_lapsed", { p_limit: BATCH });
+    if (error) {
+      console.error("sweep failed", error);
+      return json({ error: error.message, swept }, 500);
+    }
+    const n = typeof data === "number" ? data : 0;
+    swept += n;
+    passes += 1;
+    if (n < BATCH || Date.now() - started > BUDGET_MS) break;
   }
 
-  console.log(`swept ${data} lapsed streak(s)`);
-  return json({ swept: data });
+  console.log(`swept ${swept} lapsed streak(s) in ${passes} pass(es)`);
+  return json({ swept, passes });
 });
 
 function json(body: unknown, status = 200): Response {
