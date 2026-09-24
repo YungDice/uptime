@@ -57,13 +57,7 @@
   --text-display--letter-spacing: -0.03em;
   --text-display--font-weight: 300;
 
-  /* The large title at the top of a screen. */
-  --text-screen: 34px;
-  --text-screen--line-height: 1.05;
-  --text-screen--letter-spacing: -0.02em;
-  --text-screen--font-weight: 700;
-
-  /* Every heading below that: a sheet's title, a person's name. */
+  /* Every heading: a sheet's title, a person's name. */
   --text-title: 22px;
   --text-title--line-height: 1.2;
   --text-title--letter-spacing: -0.01em;

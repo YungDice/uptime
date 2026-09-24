@@ -30,9 +30,9 @@ least once. A user who checks in daily out of fear is a failure of the design.
 
 Two things a neighbouring streak app could not truthfully copy:
 
-1. **The streak is a currency.** Time is banked, given away, and spent reviving
-   other people's broken streaks. Nothing else in the category lets a streak
-   leave the person who earned it.
+1. **The streak is a currency.** Time is sent straight off your own clock onto
+   a friend's, and spent reviving other people's broken streaks. Nothing else
+   in the category lets a streak leave the person who earned it.
 2. **Failure is real but never nagging.** The clock can genuinely die, but only
    after 60 days of total silence. Daily-streak apps have to choose between
    stakes and pressure; the long window gets both.
@@ -66,19 +66,21 @@ language on all three rather than per-OS native conventions.
   truth. It can drift by seconds.
 - A streak ends only by lapsing (60 days without a sign of life), by a deliberate
   reset, or by a voluntary stop. Every past run is kept forever.
-- Banked time accrues at 10% of all time kept and is separate from the streak, so
-  giving time away never shortens a user's own record.
-- Reviving a broken streak restores half its lost length. Pricing makes a large
-  rescue cost more than one average user holds.
+- What a user can send is their own running clock. Sending takes the time off
+  the sender's timer and adds it to the recipient's; receiving adds to yours.
+  Only a running clock can send or receive - a lapsed one is revived instead.
+- Reviving a broken streak restores half its lost length, paid off the
+  reviver's clock at a tenth of what it restores. A headline rescue costs a
+  real piece of the rescuer's own run.
 - Time only moves between people who follow each other. A fresh account can do
   nothing socially until a follow is mutual. Discovery today is a handle field and
   nothing else - no search, suggestions, or invite links. Explicitly undecided.
 - Leaderboards: current streak, longest ever, lifetime total, most donated, most
   received, most rescues.
-- Six terms are load-bearing and should stay stable: streak, banked time, the
+- Six terms are load-bearing and should stay stable: streak, sending time, the
   check-in window, lapse, revive, and run.
-- Accrual rate, window length, and revive price are the three numbers that decide
-  how the game feels. All three are currently guesses.
+- Window length, revive price and the daily send cap are the numbers that
+  decide how the game feels. All three are currently guesses.
 
 ## Brand Commitments
 
@@ -118,8 +120,9 @@ data, not real people.
    happened.
 3. **Stakes without pressure.** Failure must be real and must never come from the
    product asking for attention.
-4. **Giving costs the giver, never their record.** The two systems stay separate
-   so generosity is never self-harm.
+4. **Giving costs the giver.** Time you send comes off your own clock, so a gift
+   is a real sacrifice and a received gift is real time on the recipient's run.
+   What never happens is a gift erasing history: past runs stay on the record.
 5. **Say what happened.** Especially on failure, and especially when the user was
    not there to see it.
 

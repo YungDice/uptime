@@ -1,5 +1,5 @@
-import { balance } from "@/core/economy";
-import { isRunning, statusOf } from "@/core/streak";
+import { sendable } from "@/core/economy";
+import { statusOf } from "@/core/streak";
 import type { BoardEntry, BoardId } from "@/core/leaderboards";
 import type { Gift } from "@/core/economy";
 import type { Seconds } from "@/core/time";
@@ -86,6 +86,14 @@ export interface Snapshot {
    * actually presses the button.
    */
   windowAnchor: Seconds;
+  /**
+   * What this account could send at the moment of the snapshot: everything
+   * on its running clock, or nothing if the clock is stopped.
+   *
+   * There is no separate bank any more. Time you send comes straight off your
+   * timer and lands on theirs, so this is the clock read at `serverNow` - and,
+   * like the clock, it is stale the instant it arrives. Read `liveGiveable`.
+   */
   balance: Seconds;
   totalSent: Seconds;
   totalReceived: Seconds;
@@ -107,41 +115,21 @@ export interface Snapshot {
 /**
  * The giveable total at an arbitrary instant, recomputed rather than read.
  *
- * `Snapshot.balance` is the server's answer at the moment the snapshot was
- * taken, and a snapshot is only taken when something happens. On a running
- * clock that made the figure sit perfectly still for an hour and then leap the
- * instant an action refreshed it - which is the same number arriving late, but
- * reads as the app inventing time out of nowhere. It is the one quantity in
- * the app that grows continuously while nothing is being pressed, so it is
- * derived against the ticking clock exactly the way the counter on the face is.
+ * Time you can send is your running clock itself, so this is simply the clock
+ * derived against the ticking `now` - the same number the face shows, in whole
+ * seconds. `Snapshot.balance` is that clock read at the moment the snapshot
+ * was taken, and a snapshot is only taken when something happens, so reading
+ * it directly would freeze the ceiling on a clock that is visibly still going.
  *
- * The formula is the one both adapters and the SQL use, fed the same inputs,
- * so this cannot disagree with the server about anything except the half
- * second between the read and the render - and it errs low, because the server
- * evaluates it later still. A send sized against this can never overdraw.
+ * It errs low rather than high: the server evaluates the send a moment later
+ * still, so an amount sized against this can never exceed what the server sees.
  *
- * The lapsed branch is the subtle one. A window that runs out while the app is
- * open flips the *local* status to lapsed seconds before any server sweep files
- * the run, and a lapsed status carries no elapsed to accrue against - so the
- * figure would fall by the whole run and then climb back the instant the sweep
- * credited it. `status.length` is exactly what the sweep is about to add
- * (`runLength`, credited to lastSeen rather than through the grace window), so
- * counting it here makes the two readings the same number rather than a dip.
+ * A clock whose window has run out reads as nothing to send, even before the
+ * sweep has filed it. Its run is over; spending out of it would be spending
+ * time that is already on its way into history.
  */
 export function liveGiveable(snapshot: Snapshot, now: Seconds): Seconds {
-  const status = statusOf(snapshot.me.streak, now);
-  const kept = isRunning(status)
-    ? status.elapsed
-    : status.kind === "lapsed"
-      ? status.length
-      : 0;
-
-  return balance({
-    lifetimeSeconds: snapshot.me.lifetimeSeconds,
-    currentElapsed: kept,
-    sent: snapshot.totalSent,
-    received: snapshot.totalReceived,
-  });
+  return sendable(statusOf(snapshot.me.streak, now));
 }
 
 /**
@@ -213,6 +201,28 @@ export interface PublicProfile {
 export interface SendTarget {
   profile: UserProfile;
   connected: boolean;
+  /**
+   * Their raw record. A gift lands on their running clock, so whether it has
+   * anywhere to land is decided from this against the ticking clock.
+   */
+  streak: StreakRecord;
+}
+
+/**
+ * The cheapest possible read of this account: enough to tell whether anything
+ * changed on the server since the last snapshot.
+ *
+ * Someone sending you time moves *your* clock while you are looking at it, and
+ * nothing on this device would otherwise find out until the next action or the
+ * next app open. Polling the whole snapshot for that would make every open
+ * client re-read its entire friend list on a timer, which is the load that
+ * does not survive a large user base. This is one primary-key lookup; the full
+ * refresh only runs when it says something moved.
+ */
+export interface Pulse {
+  serverNow: Seconds;
+  streakStart: Seconds | null;
+  totalReceived: Seconds;
 }
 
 /**
@@ -251,15 +261,23 @@ export interface UptimeStore {
   start(handle: string): Promise<Snapshot>;
   /** Refresh, and register a sign of life. Called on every app open. */
   refresh(): Promise<Snapshot>;
+  /**
+   * Has anything moved? Read-only, and deliberately not a sign of life - it
+   * runs on a timer, and a tab left open is not a person showing up.
+   */
+  pulse(): Promise<Pulse>;
   /** The low-friction "I'm still here". */
   checkIn(): Promise<ActionResult>;
   /** Begin a run on a fresh or stopped account. */
   startStreak(): Promise<ActionResult>;
   /** End your own streak on purpose. Recorded as its own stat. */
   stopStreak(): Promise<ActionResult>;
-  /** Give banked time away, no strings attached. */
+  /**
+   * Give time away, no strings attached. It comes straight off your running
+   * clock and is added to theirs.
+   */
   sendTime(toUserId: string, amount: Seconds): Promise<ActionResult>;
-  /** Spend banked time to bring a friend's lapsed streak back, halved. */
+  /** Spend time off your own clock to bring a friend's lapsed streak back, halved. */
   reviveFriend(userId: string): Promise<ActionResult>;
   /**
    * Follow someone by handle.
@@ -275,7 +293,7 @@ export interface UptimeStore {
    * Turn the current anonymous account into a permanent one.
    *
    * Deliberately an upgrade rather than a fresh signup: the user id does not
-   * change, so the streak, the history and the banked balance all carry over.
+   * change, so the streak, the history and the ledger all carry over.
    * Losing a 95-day run to make an account would be the worst possible moment
    * to ask for one.
    */

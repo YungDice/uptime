@@ -21,28 +21,21 @@ export const CHECK_IN_WINDOW = 60 * DAY;
 export const CHECK_IN_NUDGE_LEAD = 7 * DAY;
 
 /**
- * Fraction of kept time that accrues as spendable banked time.
- *
- * At 10%, a 100-day streak has banked 10 days to give away. Generous enough
- * that gifts are a real gesture, scarce enough that they cost something.
- */
-export const ACCRUAL_RATE = 0.1;
-
-/**
  * A revived streak comes back at half the length it lost, per the prompt.
  * Reviving is a rescue, not an undo.
  */
 export const REVIVE_RESTORE_FRACTION = 0.5;
 
 /**
- * Banked cost to revive, per second of streak *restored*.
+ * Revive price, per second of streak *restored*.
  *
- * Priced at the accrual rate so that reviving costs the reviver exactly the
- * banked time that the restored stretch would itself have earned. A 400-day
- * streak restores to 200 days and costs 20 banked days - more than most single
- * users hold, which is the point: big rescues take more than one friend.
+ * Paid out of the reviver's own running clock, because that clock is the only
+ * currency there is: time you send comes off your timer and lands on theirs.
+ * At a tenth, a 400-day streak restores to 200 days and costs the reviver 20
+ * days of their own run - a real sacrifice, which is the point: big rescues
+ * take more than one friend.
  */
-export const REVIVE_COST_PER_RESTORED_SECOND = ACCRUAL_RATE;
+export const REVIVE_COST_PER_RESTORED_SECOND = 0.1;
 
 /** Milestone ladder, in days. Used for the "next milestone" bar. */
 export const MILESTONE_DAYS = [1, 7, 30, 60, 100, 180, 365, 500, 730, 1000] as const;

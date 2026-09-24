@@ -29,6 +29,43 @@ interface DueRow {
 
 const TITLE = "Still there?";
 
+/**
+ * Pushes in flight at once.
+ *
+ * Delivery used to be strictly one after another, so a run's wall-clock time
+ * was the sum of every provider round trip - a thousand due users at a couple
+ * of hundred milliseconds each is longer than an Edge Function is allowed to
+ * live, and the users past the cut-off were simply never nudged. A small pool
+ * keeps the run inside its limit without opening a thousand sockets at once.
+ */
+const CONCURRENCY = 16;
+
+/**
+ * Provider credentials, minted once per run rather than once per push.
+ *
+ * Every FCM send used to perform a fresh service-account token exchange and
+ * every WNS send a fresh OAuth login - a thousand nudges meant a thousand
+ * token requests, which is how a batch job gets itself rate limited by the
+ * very provider it is trying to reach. Each token is valid for an hour, far
+ * longer than one run. Created per request, not per isolate, so a warm
+ * isolate can never hand out a token that has since expired.
+ */
+type Credentials = Map<string, Promise<string>>;
+
+function cached(creds: Credentials, key: string, make: () => Promise<string>): Promise<string> {
+  let pending = creds.get(key);
+  if (pending === undefined) {
+    // A failed exchange is forgotten, so the next push can try again rather
+    // than every remaining push inheriting the one failure.
+    pending = make().catch((err) => {
+      creds.delete(key);
+      throw err;
+    });
+    creds.set(key, pending);
+  }
+  return pending;
+}
+
 const bodyFor = (daysLeft: number) =>
   daysLeft <= 1
     ? "Your streak ends tomorrow unless you check in."
@@ -49,12 +86,13 @@ Deno.serve(async (req: Request) => {
 
   const rows = (data ?? []) as DueRow[];
   const now = Math.floor(Date.now() / 1000);
+  const creds: Credentials = new Map();
   let sent = 0;
   let skipped = 0;
 
-  for (const row of rows) {
+  await forEachLimited(rows, CONCURRENCY, async (row) => {
     const daysLeft = Math.max(1, Math.ceil((row.deadline - now) / 86400));
-    const delivered = await deliver(row, bodyFor(daysLeft));
+    const delivered = await deliver(row, bodyFor(daysLeft), creds);
     if (delivered) {
       sent += 1;
       // Recorded only on a successful send, so an outage retries tomorrow
@@ -63,21 +101,37 @@ Deno.serve(async (req: Request) => {
     } else {
       skipped += 1;
     }
-  }
+  });
 
   console.log(`nudge: ${sent} sent, ${skipped} skipped of ${rows.length} due`);
   return json({ due: rows.length, sent, skipped });
 });
 
-async function deliver(row: DueRow, body: string): Promise<boolean> {
+/** Run `work` over `items` with at most `limit` in flight. */
+async function forEachLimited<T>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next++] as T;
+      await work(item);
+    }
+  });
+  await Promise.all(lanes);
+}
+
+async function deliver(row: DueRow, body: string, creds: Credentials): Promise<boolean> {
   try {
     switch (row.platform) {
       case "fcm":
-        return await sendFcm(row.token, body);
+        return await sendFcm(row.token, body, creds);
       case "apns":
-        return await sendApns(row.token, body);
+        return await sendApns(row.token, body, creds);
       case "wns":
-        return await sendWns(row.token, body);
+        return await sendWns(row.token, body, creds);
     }
   } catch (err) {
     console.error(`deliver failed for ${row.platform}`, err);
@@ -87,7 +141,7 @@ async function deliver(row: DueRow, body: string): Promise<boolean> {
 
 // --- Android -------------------------------------------------------------
 
-async function sendFcm(token: string, body: string): Promise<boolean> {
+async function sendFcm(token: string, body: string, creds: Credentials): Promise<boolean> {
   const raw = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON");
   if (!raw) return false;
 
@@ -96,7 +150,7 @@ async function sendFcm(token: string, body: string): Promise<boolean> {
     private_key: string;
     project_id: string;
   };
-  const accessToken = await googleAccessToken(account);
+  const accessToken = await cached(creds, "fcm", () => googleAccessToken(account));
 
   const res = await fetch(
     `https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`,
@@ -153,14 +207,18 @@ async function googleAccessToken(account: {
 
 // --- iOS -----------------------------------------------------------------
 
-async function sendApns(token: string, body: string): Promise<boolean> {
+async function sendApns(token: string, body: string, creds: Credentials): Promise<boolean> {
   const p8 = Deno.env.get("APNS_KEY_P8");
   const keyId = Deno.env.get("APNS_KEY_ID");
   const teamId = Deno.env.get("APNS_TEAM_ID");
   const bundleId = Deno.env.get("APNS_BUNDLE_ID");
   if (!p8 || !keyId || !teamId || !bundleId) return false;
 
-  const jwt = await signEs256({ iss: teamId, iat: Math.floor(Date.now() / 1000) }, p8, keyId);
+  // Apple asks for the provider token to be reused, not re-signed per request:
+  // it throttles connections that refresh it more than once every 20 minutes.
+  const jwt = await cached(creds, "apns", () =>
+    signEs256({ iss: teamId, iat: Math.floor(Date.now() / 1000) }, p8, keyId),
+  );
 
   const res = await fetch(`https://api.push.apple.com/3/device/${token}`, {
     method: "POST",
@@ -186,24 +244,26 @@ async function sendApns(token: string, body: string): Promise<boolean> {
 
 // --- Windows -------------------------------------------------------------
 
-async function sendWns(channelUri: string, body: string): Promise<boolean> {
+async function sendWns(channelUri: string, body: string, creds: Credentials): Promise<boolean> {
   const clientId = Deno.env.get("WNS_CLIENT_ID");
   const clientSecret = Deno.env.get("WNS_CLIENT_SECRET");
   if (!clientId || !clientSecret) return false;
 
-  const tokenRes = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
-      scope: "https://wns.windows.com/.default",
-    }),
+  const access_token = await cached(creds, "wns", async () => {
+    const tokenRes = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: "https://wns.windows.com/.default",
+      }),
+    });
+    const { access_token } = (await tokenRes.json()) as { access_token?: string };
+    if (!access_token) throw new Error("no access token from WNS");
+    return access_token;
   });
-
-  const { access_token } = (await tokenRes.json()) as { access_token?: string };
-  if (!access_token) return false;
 
   const toast =
     `<toast launch="uptime://check-in"><visual><binding template="ToastGeneric">` +

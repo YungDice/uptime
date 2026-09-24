@@ -1,10 +1,17 @@
-import { isRunning, splitStopwatch, type StreakStatus } from "@/core";
+import { isRunning, splitStopwatch, type Clock, type Seconds, type StreakStatus } from "@/core";
+import { useFractionalNow } from "@/hooks/useNow";
 
 interface Props {
-  /** Derived against the fractional clock by the caller, not stored. */
+  /** Derived by the caller against the once-a-second clock, not stored. */
   status: StreakStatus;
-  /** Fractional elapsed seconds; the hundredths come from here. */
-  elapsed: number;
+  /** When the run began. The face derives its own elapsed from this. */
+  streakStart: Seconds | null;
+  /**
+   * The server-corrected clock. The face reads it per animation frame itself,
+   * so that the milliseconds are the only thing on screen that re-renders at
+   * that rate - see `Session.clock`.
+   */
+  clock: Clock;
   /** 0-1 of the check-in window still open, measured from the last visit. */
   windowFraction: number;
   windowLabel: string;
@@ -20,8 +27,9 @@ const TICKS = 60;
  * The Timer's ring around the Stopwatch's face.
  *
  * Both halves are load-bearing. The ring is the check-in window draining, which
- * is the only way this streak can die; the face is the run itself, with the
- * hundredths that make it a stopwatch rather than a counter. Nothing is in a
+ * is the only way this streak can die; the face is the run itself, read as
+ * days on top and `hours:minutes:seconds:milliseconds` beneath, down to the
+ * milliseconds that make it a stopwatch rather than a counter. Nothing is in a
  * card, because the Clock app has never put anything in a card.
  *
  * Three things here exist purely so the screen is alive rather than correct:
@@ -30,10 +38,15 @@ const TICKS = 60;
  * the point of them - an idle clock should look cold, and it did not read as
  * cold when it looked exactly like a live one minus a colour.
  */
-export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: Props) {
+export function StopwatchFace({ status, streakStart, clock, windowFraction, windowLabel }: Props) {
   const live = isRunning(status);
+  // Subscribed here and nowhere else, and only while the run is live: an idle
+  // or lapsed face has nothing moving on it to draw.
+  const fractionalNow = useFractionalNow(clock, live);
+  const elapsed = live && streakStart !== null ? Math.max(0, fractionalNow - streakStart) : 0;
   const shown = live ? elapsed : status.kind === "lapsed" ? status.length : 0;
-  const { days, clock, hundredths } = splitStopwatch(shown);
+  const parts = splitStopwatch(shown);
+  const { days } = parts;
 
   // The ring carries the system colour; the figure stays white, as the Timer
   // sets it. Tinting both put two accents at the same scale and flattened the
@@ -49,8 +62,8 @@ export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: 
   const swept = Math.max(0, Math.min(1, windowFraction));
   // Once round the face per minute, exactly as the real one does. This is the
   // only element on screen driven by the fractional clock other than the
-  // hundredths, and it is what makes the object read as running from across a
-  // room, where two digits changing cannot be seen at all.
+  // milliseconds, and it is what makes the object read as running from across
+  // a room, where three digits changing cannot be seen at all.
   const sweep = ((shown % 60) / 60) * 360;
 
   return (
@@ -58,7 +71,7 @@ export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: 
       className="no-select flex flex-col items-center pt-5 pb-1"
       aria-label={
         live
-          ? `${days} day streak, ${clock} on the current day. ${windowLabel}.`
+          ? `${days} day streak, ${parts.clock} on the current day. ${windowLabel}.`
           : "No streak running."
       }
     >
@@ -185,11 +198,18 @@ export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: 
                   {days === 1 ? "day" : "days"}
                 </span>
               </div>
-              {/* The stopwatch readout. aria-hidden because it changes a
-                  hundred times a second; the section label carries it. */}
-              <div className="tnum mt-3 flex items-baseline font-light" aria-hidden="true">
-                <span className="text-2xl text-label">{clock}</span>
-                <span className="text-2xl text-label-2">.{hundredths}</span>
+              {/* The stopwatch readout: hours, minutes, seconds and
+                  milliseconds under the days, each captioned so the format
+                  reads without having to be explained. aria-hidden because it
+                  changes every frame; the section label carries it. */}
+              <div className="tnum mt-3 flex items-start font-light" aria-hidden="true">
+                <Field value={parts.hours} unit="hr" />
+                <Colon />
+                <Field value={parts.minutes} unit="min" />
+                <Colon />
+                <Field value={parts.seconds} unit="sec" />
+                <Colon />
+                <Field value={parts.millis} unit="ms" quiet />
               </div>
             </>
           ) : (
@@ -227,4 +247,28 @@ export function StopwatchFace({ status, elapsed, windowFraction, windowLabel }: 
       <p className="mt-1.5 text-footnote text-label-2">{windowLabel}</p>
     </section>
   );
+}
+
+/**
+ * One group of the readout with its unit beneath it.
+ *
+ * The caption is what turns `04:31:09:420` from a string to be decoded into a
+ * clock that says which part is which. `quiet` is the milliseconds: the field
+ * that moves fastest is the one that should draw the eye least.
+ */
+function Field({ value, unit, quiet }: { value: string; unit: string; quiet?: boolean }) {
+  return (
+    <span className="flex flex-col items-center">
+      <span className={`text-2xl leading-none ${quiet ? "text-label-2" : "text-label"}`}>
+        {value}
+      </span>
+      <span className="mt-1.5 text-micro font-medium tracking-[0.08em] text-label-3 uppercase">
+        {unit}
+      </span>
+    </span>
+  );
+}
+
+function Colon() {
+  return <span className="px-0.5 text-2xl leading-none text-label-3">:</span>;
 }

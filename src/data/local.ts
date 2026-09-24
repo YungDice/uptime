@@ -1,7 +1,6 @@
 import {
   CHECK_IN_WINDOW,
   DAY,
-  balance,
   buildBoard,
   checkGift,
   endRun,
@@ -9,13 +8,16 @@ import {
   reviveCost,
   reviveRun,
   revivedLength,
+  sendable,
   sentInLastDay,
+  spend,
   startRun,
   statusOf,
   systemClock,
   totalReceived,
   totalSent,
   touch,
+  transfer,
   type BoardEntry,
   type BoardId,
   type Clock,
@@ -29,6 +31,7 @@ import type {
   ActionResult,
   FriendView,
   PublicProfile,
+  Pulse,
   RankInfo,
   Snapshot,
   UptimeStore,
@@ -126,6 +129,16 @@ export class LocalStore implements UptimeStore {
     return this.snapshot();
   }
 
+  async pulse(): Promise<Pulse> {
+    this.syncFromStorage();
+    const me = this.me();
+    return {
+      serverNow: this.clock.now(),
+      streakStart: me.streak.streakStart,
+      totalReceived: totalReceived(this.world.gifts, me.id),
+    };
+  }
+
   async checkIn(): Promise<ActionResult> {
     const now = this.clock.now();
     this.syncFromStorage();
@@ -199,12 +212,22 @@ export class LocalStore implements UptimeStore {
     }
 
     const check = checkGift(amount, {
-      senderBalance: this.balanceOf(me, now),
+      senderBalance: this.sendableOf(me, now),
       sentInLastDay: sentInLastDay(this.world.gifts, me.id, now),
       connected: this.connected(me.id, toUserId),
       isSelf: me.id === toUserId,
+      recipientRunning: isRunning(statusOf(recipient.streak, now)),
     });
-    if (!check.ok) return { ok: false, message: check.message };
+    if (!check.ok) {
+      // The core message cannot know whose clock it is talking about.
+      return {
+        ok: false,
+        message:
+          check.reason === "recipient-stopped"
+            ? recipient.displayName + "'s clock isn't running, so there's nothing to add time to."
+            : check.message,
+      };
+    }
 
     this.world.gifts.push({
       id: this.giftId(now),
@@ -213,15 +236,18 @@ export class LocalStore implements UptimeStore {
       amount,
       createdAt: now,
     });
-    // Receiving is a sign of life for the recipient, as the prompt specifies.
-    recipient.streak = touch(recipient.streak, now);
-    me.streak = touch(me.streak, now);
+    // The time itself moves: off the sender's clock, onto the recipient's.
+    // Both are touched inside `transfer`, since sending and receiving are each
+    // a sign of life.
+    const moved = transfer(me.streak, recipient.streak, amount, now);
+    me.streak = moved.from;
+    recipient.streak = moved.to;
     this.persist();
 
     return {
       ok: true,
       snapshot: this.snapshot(),
-      message: "Sent to " + recipient.displayName + ".",
+      message: "Sent to " + recipient.displayName + ". It's on their clock now.",
     };
   }
 
@@ -250,8 +276,11 @@ export class LocalStore implements UptimeStore {
 
     const cost = reviveCost(lastRun.length);
     const restores = revivedLength(lastRun.length);
-    if (cost > this.balanceOf(me, now)) {
-      return { ok: false, message: "Not enough banked time for this rescue." };
+    if (!isRunning(statusOf(me.streak, now))) {
+      return { ok: false, message: "Your clock isn't running, so there's no time to pay with." };
+    }
+    if (cost > this.sendableOf(me, now)) {
+      return { ok: false, message: "Not enough time on your clock for this rescue." };
     }
 
     this.world.gifts.push({
@@ -268,7 +297,8 @@ export class LocalStore implements UptimeStore {
     // lifetime total - but the run itself stays on the record, marked.
     lastRun.revivedAt = now;
     friend.lifetimeSeconds = Math.max(0, friend.lifetimeSeconds - lastRun.length);
-    me.streak = touch(me.streak, now);
+    // The price comes off the reviver's own clock.
+    me.streak = spend(me.streak, cost, now);
     this.persist();
 
     return {
@@ -561,14 +591,9 @@ export class LocalStore implements UptimeStore {
     );
   }
 
-  private balanceOf(user: UserState, now: Seconds): Seconds {
-    const status = statusOf(user.streak, now);
-    return balance({
-      lifetimeSeconds: user.lifetimeSeconds,
-      currentElapsed: isRunning(status) ? status.elapsed : 0,
-      sent: totalSent(this.world.gifts, user.id),
-      received: totalReceived(this.world.gifts, user.id),
-    });
+  /** Everything on the running clock. See `sendable`. */
+  private sendableOf(user: UserState, now: Seconds): Seconds {
+    return sendable(statusOf(user.streak, now));
   }
 
   /**
@@ -633,7 +658,7 @@ export class LocalStore implements UptimeStore {
       status,
       serverNow: now,
       windowAnchor: this.anchor ?? me.streak.lastSeen,
-      balance: this.balanceOf(me, now),
+      balance: this.sendableOf(me, now),
       totalSent: totalSent(this.world.gifts, me.id),
       totalReceived: totalReceived(this.world.gifts, me.id),
       sentInLastDay: sentInLastDay(this.world.gifts, me.id, now),

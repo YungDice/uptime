@@ -7,6 +7,8 @@ import {
   checkGift,
   formatDuration,
   formatElapsed,
+  isRunning,
+  statusOf,
   type Seconds,
 } from "@/core";
 import type { SendTarget } from "@/data/store";
@@ -21,8 +23,10 @@ interface Props {
    * know about the other.
    */
   friend: SendTarget;
-  /** The live figure, recomputed by the caller on every tick. */
+  /** Your running clock, recomputed by the caller on every tick. */
   giveable: Seconds;
+  /** Whole seconds, so their clock is judged running against the same tick. */
+  now: Seconds;
   sentToday: Seconds;
   onCancel(): void;
   onConfirm(amount: Seconds): void;
@@ -45,15 +49,19 @@ const PRESETS: Seconds[] = [5 * MINUTE, HOUR, 6 * HOUR, DAY, 7 * DAY];
  * So the amount is a continuous choice between one minute and everything, and
  * the ceiling is the live figure rather than a snapshot of it: with the clock
  * running it rises while the sheet is open, and picking Max follows it up.
+ *
+ * What is being sized is your own streak. Sending takes the time straight off
+ * your running clock and adds it to theirs, which is why the sheet opens on a
+ * modest hour rather than on half of everything you have kept.
  */
-export function SendSheet({ friend, giveable, sentToday, onCancel, onConfirm }: Props) {
+export function SendSheet({ friend, giveable, now, sentToday, onCancel, onConfirm }: Props) {
   // The rolling cap is part of the ceiling, not a refusal after the fact. A
   // slider that lets you pick an amount the server will reject is a worse
   // control than one that cannot reach it.
   const allowance = Math.max(0, MAX_SENT_PER_DAY - sentToday);
   const max = Math.min(giveable, allowance);
 
-  const [chosen, setChosen] = useState<Seconds>(() => Math.floor(max / 2));
+  const [chosen, setChosen] = useState<Seconds>(() => Math.min(HOUR, max));
   // Max is a standing instruction rather than a value, because the value it
   // means is still going up while this sheet is open.
   const [followMax, setFollowMax] = useState(false);
@@ -66,6 +74,7 @@ export function SendSheet({ friend, giveable, sentToday, onCancel, onConfirm }: 
     sentInLastDay: sentToday,
     connected: friend.connected,
     isSelf: false,
+    recipientRunning: isRunning(statusOf(friend.streak, now)),
   });
 
   const pick = (value: Seconds) => {
@@ -95,7 +104,7 @@ export function SendSheet({ friend, giveable, sentToday, onCancel, onConfirm }: 
         </span>
       </div>
       <p className="mt-1.5 text-center text-footnote text-label-2">
-        of <span className="tnum">{formatElapsed(max)}</span> you can give
+        of <span className="tnum">{formatElapsed(max)}</span> you can send
         {allowance < giveable ? " today" : ""}
       </p>
 
@@ -136,12 +145,18 @@ export function SendSheet({ friend, giveable, sentToday, onCancel, onConfirm }: 
         {max <= 0 && allowance <= 0
           ? "You've hit today's sending limit. It resets on a rolling 24 hours."
           : max <= 0
-            ? "Nothing to give yet. Your clock has to run a while first."
-            : "Giving time away never shortens your own streak."}
+            ? "Nothing to send yet. Your clock has to be running with time on it."
+            : `This comes off your own clock and is added to ${friend.profile.displayName}'s.`}
       </p>
 
-      {!check.ok && max > 0 && amount > 0 ? (
-        <p className="mt-2 text-footnote text-lapse">{check.message}</p>
+      {/* A stopped recipient is refused whatever the amount, so it is said even
+          at zero - otherwise the sheet would just sit with a dead Send button. */}
+      {!check.ok && (check.reason === "recipient-stopped" || (max > 0 && amount > 0)) ? (
+        <p className="mt-2 text-footnote text-lapse">
+          {check.reason === "recipient-stopped"
+            ? `${friend.profile.displayName}'s clock isn't running, so there's nothing to add time to.`
+            : check.message}
+        </p>
       ) : null}
 
       <div className="mt-6 flex gap-3">

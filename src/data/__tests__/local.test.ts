@@ -118,36 +118,87 @@ describe("LocalStore", () => {
     expect(toDays(snap.lastRun!.length)).toBe(95);
   });
 
-  it("refuses to send more than is banked", async () => {
+  it("refuses to send more than the clock has on it", async () => {
     const snap = await store.refresh();
     const friend = snap.friends[0]!;
     const result = await store.sendTime(friend.profile.id, snap.balance + DAY);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message).toMatch(/more than you have/i);
+    if (!result.ok) expect(result.message).toMatch(/more than your clock/i);
   });
 
-  it("moves time between connected users without shortening the sender's streak", async () => {
+  it("takes sent time off the sender's clock and adds it to the recipient's", async () => {
     const before = await store.refresh();
-    const friend = before.friends[0]!;
+    const friend = before.friends.find((f) => f.profile.handle === "mara")!;
+    const theirStart = friend.streak.streakStart!;
 
     const result = await store.sendTime(friend.profile.id, DAY);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
+    // Mine: a day shorter. Theirs: a day longer. Nothing else about either
+    // run moved - the time itself changed hands.
+    expect(result.snapshot.me.streak.streakStart).toBe(before.me.streak.streakStart! + DAY);
+    const after = result.snapshot.friends.find((f) => f.profile.id === friend.profile.id)!;
+    expect(after.streak.streakStart).toBe(theirStart - DAY);
+
     expect(result.snapshot.balance).toBe(before.balance - DAY);
     expect(result.snapshot.totalSent).toBe(DAY);
-    // The record itself is untouched - the whole reason banked time is separate.
-    expect(result.snapshot.me.streak.streakStart).toBe(before.me.streak.streakStart);
-    if (isRunning(result.snapshot.status) && isRunning(before.status)) {
-      expect(result.snapshot.status.elapsed).toBe(before.status.elapsed);
-    }
+    // The ledger still records it, for the boards and the audit trail.
+    expect(result.snapshot.recentGifts[0]?.amount).toBe(DAY);
+  });
+
+  it("adds time somebody sends you onto your own clock", async () => {
+    const before = await store.refresh();
+    const asMara = new LocalStore(clock, sharedStorage);
+    await asMara.start("mara");
+    const sent = await asMara.sendTime(before.me.id, 3 * HOUR);
+    expect(sent.ok).toBe(true);
+
+    // The pulse is how an open app finds out, without a full read.
+    const pulse = await store.pulse();
+    expect(pulse.streakStart).toBe(before.me.streak.streakStart! - 3 * HOUR);
+    expect(pulse.totalReceived).toBe(before.totalReceived + 3 * HOUR);
+
+    const after = await store.refresh();
+    expect(after.me.streak.streakStart).toBe(before.me.streak.streakStart! - 3 * HOUR);
+    expect(after.balance).toBe(before.balance + 3 * HOUR);
+  });
+
+  it("does not treat a pulse as a sign of life", async () => {
+    const before = await store.refresh();
+    clock.advance(10 * DAY);
+    await store.pulse();
+    const after = await store.refresh();
+    // The anchor is where last_seen stood before this refresh: untouched by
+    // the pulse, so still ten days back.
+    expect(after.windowAnchor).toBe(before.me.streak.lastSeen);
+  });
+
+  it("refuses to send to a clock that is not running", async () => {
+    const snap = await store.refresh();
+    const stopped = snap.friends.find(
+      (f) => f.connected && !isRunning(statusOf(f.streak, clock.now())),
+    )!;
+    const result = await store.sendTime(stopped.profile.id, HOUR);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/isn't running/i);
+  });
+
+  it("refuses to send when your own clock is stopped", async () => {
+    const snap = await store.refresh();
+    const friend = snap.friends.find((f) => f.profile.handle === "mara")!;
+    await store.stopStreak();
+    const result = await store.sendTime(friend.profile.id, HOUR);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/no time on it/i);
   });
 
   it("enforces the rolling daily cap across several gifts", async () => {
     const snap = await store.refresh();
     const friend = snap.friends[0]!;
 
-    // Balance is ~22d, cap is 7d/day. Four 2-day gifts fit; the fifth does not.
+    // The clock is ~95d, the cap is 7d a day. Three 2-day gifts fit; the
+    // fourth would make 8.
     for (let i = 0; i < 3; i++) {
       expect((await store.sendTime(friend.profile.id, 2 * DAY)).ok).toBe(true);
     }
@@ -165,7 +216,9 @@ describe("LocalStore", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
+    // Paid off the reviver's own clock.
     expect(result.snapshot.balance).toBe(before.balance - cost);
+    expect(result.snapshot.me.streak.streakStart).toBe(before.me.streak.streakStart! + cost);
 
     const revived = result.snapshot.friends.find((f) => f.profile.id === broken.profile.id)!;
     const status = statusOf(revived.streak, clock.now());
@@ -173,6 +226,15 @@ describe("LocalStore", () => {
     if (isRunning(status)) expect(status.elapsed).toBe(restores);
     // No longer offered for rescue, so the same run cannot be bought twice.
     expect(revived.revive).toBeUndefined();
+  });
+
+  it("refuses to revive when your own clock is stopped", async () => {
+    const snap = await store.refresh();
+    const broken = snap.friends.find((f) => f.revive !== undefined)!;
+    await store.stopStreak();
+    const result = await store.reviveFriend(broken.profile.id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/isn't running/i);
   });
 
   it("counts a revive on the rescues board", async () => {
@@ -358,34 +420,27 @@ describe("LocalStore accounts", () => {
 
   // --- the giveable figure -------------------------------------------------
 
-  it("grows the giveable figure continuously while the clock runs", async () => {
+  it("is the running clock itself, so it grows second for second", async () => {
     const before = await store.refresh();
     const at = clock.now();
     clock.advance(HOUR);
 
-    // No refresh in between. This is the whole point: the figure has to be
-    // right from a snapshot taken an hour ago, because on a running clock that
-    // is the only snapshot there is.
-    const grew = liveGiveable(before, at + HOUR) - liveGiveable(before, at);
-    expect(grew).toBe(HOUR / 10);
+    // No refresh in between: the figure has to be right from a snapshot taken
+    // an hour ago, because on a running clock that is the only one there is.
+    expect(liveGiveable(before, at + HOUR) - liveGiveable(before, at)).toBe(HOUR);
+    expect(liveGiveable(before, at + HOUR)).toBe(at + HOUR - before.me.streak.streakStart!);
   });
 
-  it("does not jump when the clock is stopped", async () => {
+  it("has nothing to send once the clock is stopped", async () => {
     await store.refresh();
-    clock.advance(HOUR);
-    const running = await store.refresh();
-    const justBefore = liveGiveable(running, clock.now());
-
     const stopped = await store.stopStreak();
     expect(stopped.ok).toBe(true);
     if (!stopped.ok) return;
 
-    // Stopping files the run into lifetimeSeconds, which is the same time the
-    // live figure was already counting - so the total must not move. The bug
-    // this stands against reported the figure leaping from 5 to 13 minutes on
-    // a stop, which was an hour of accrual arriving all at once because the
-    // display had been frozen at the last snapshot the whole time.
-    expect(liveGiveable(stopped.snapshot, clock.now())).toBe(justBefore);
+    // The run went into history. Time is sent off a running clock, and there
+    // is no longer one to send it off.
+    expect(liveGiveable(stopped.snapshot, clock.now())).toBe(0);
+    expect(stopped.snapshot.balance).toBe(0);
   });
 
   it("agrees with the balance the adapter derives server-side", async () => {
@@ -393,25 +448,16 @@ describe("LocalStore accounts", () => {
     expect(liveGiveable(snap, snap.serverNow)).toBe(snap.balance);
   });
 
-  it("does not jump when a lapse is swept either", async () => {
+  it("reads nothing to send once the window has run out, swept or not", async () => {
     // The window running out while the app is open flips the local status to
-    // lapsed before any sweep files the run. Read from the stale snapshot at
-    // that moment, and again from the swept one, the figure has to agree: the
-    // sweep credits the run up to lastSeen, which is precisely what the lapsed
-    // status was already reporting as its length.
+    // lapsed before any sweep files the run. Both readings have to agree that
+    // the run is over and there is nothing left on the clock to give.
     const before = await store.refresh();
     clock.advance(CHECK_IN_WINDOW + DAY);
-    const unswept = liveGiveable(before, clock.now());
+    expect(liveGiveable(before, clock.now())).toBe(0);
 
     const after = await store.refresh();
-    expect(liveGiveable(after, clock.now())).toBe(unswept);
-    // And it counts the run only up to the last sign of life, never through
-    // the grace window - vanishing must not earn the same as showing up. The
-    // gap between the two is one whole window's worth of accrual.
-    const throughTheWindow = Math.floor(
-      (before.me.lifetimeSeconds + (clock.now() - before.me.streak.streakStart!)) / 10,
-    );
-    expect(throughTheWindow - unswept).toBe(Math.floor((CHECK_IN_WINDOW + DAY) / 10));
+    expect(liveGiveable(after, clock.now())).toBe(0);
   });
 
   // --- other people's profiles ---------------------------------------------

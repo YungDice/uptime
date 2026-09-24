@@ -6,7 +6,7 @@ import type { UserProfile } from "@/core";
  *
  * The fallback is a monogram on a flat grey disc, which is what Contacts and
  * Messages do - not a coloured circle per person. Colour in this app names a
- * system (orange is a live run, green is banked time, red is a lapse), so
+ * system (orange is a live run, green is time given, red is a lapse), so
  * tinting avatars by user id would spend the one signal the interface has on
  * decoration, and a green face beside a green balance would imply a
  * relationship that is not there.

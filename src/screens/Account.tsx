@@ -135,7 +135,7 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
       {mode === "up" ? (
         <p className="mt-4 px-5 text-footnote text-label-2">
           {days > 0
-            ? `Your ${days}-day record and your banked time carry over - creating an account upgrades this one rather than starting a new one.`
+            ? `Your ${days}-day record carries over - creating an account upgrades this one rather than starting a new one.`
             : "Creating an account upgrades this one rather than starting a new one, so whatever is on the clock stays on it."}
         </p>
       ) : (
@@ -259,8 +259,9 @@ function SignedIn({
           tone={placing !== null && placing.position <= 3 ? "run" : "default"}
         />
         <Stat label="Best run" value={formatDuration(snapshot.personalBest)} />
+        {/* Your running clock: sending takes time straight off it. */}
         <Stat
-          label="To give"
+          label="Can send"
           tone="bank"
           value={<LiveTime compact seconds={liveGiveable(snapshot, now)} />}
         />

@@ -63,48 +63,61 @@ export function formatElapsed(seconds: Seconds): string {
   return days > 0 ? `${days}d ${hms}` : hms;
 }
 
-/** The stopwatch readout, split so each field can be set at its own scale. */
+/**
+ * The stopwatch readout, split so each field can be set at its own scale.
+ *
+ * The face reads `days` on top and `hours:minutes:seconds:milliseconds`
+ * beneath it, so every field is here on its own as well as pre-joined - the
+ * face captions each group, and a caption needs to know where one ends.
+ */
 export interface StopwatchParts {
   days: number;
+  /** Zero-padded to two digits. */
+  hours: string;
+  minutes: string;
+  seconds: string;
+  /** Three digits, `000`-`999`. */
+  millis: string;
   /** `HH:MM:SS` within the current day, zero-padded. */
   clock: string;
-  /** Two digits, `00`-`99`. Hundredths, as the iPhone stopwatch shows them. */
-  hundredths: string;
 }
 
 /**
  * Split elapsed time the way a stopwatch face does.
  *
- * Takes fractional seconds because the hundredths are the point: this app's
- * whole subject is the iPhone stopwatch nobody stopped, and a readout that
- * only moves once a second is not that object.
+ * Takes fractional seconds because the milliseconds are the point: this app's
+ * whole subject is the stopwatch nobody stopped, and a readout that only moves
+ * once a second is not that object.
  *
- * The hundredths are cosmetic by construction. The server stores whole
+ * The milliseconds are cosmetic by construction. The server stores whole
  * seconds, so this is a local animation running from `streak_start` - which is
  * exactly what the real stopwatch does too, and why it survives a restart.
  */
 export function splitStopwatch(elapsedSeconds: number): StopwatchParts {
   // Integer milliseconds, not a fractional subtraction. At 95 days the elapsed
   // float is ~8.2e6, and `x - Math.floor(x)` on a number that large returns
-  // 0.4199999... for 0.42, so flooring it would show 41 instead of 42. Scaling
-  // to whole milliseconds first keeps every later step exact.
-  const ms = Math.max(0, Math.round(elapsedSeconds * 1000));
-  const whole = Math.floor(ms / 1000);
+  // 0.4199999... for 0.42, so flooring it would show 419 instead of 420.
+  // Scaling to whole milliseconds first keeps every later step exact.
+  const total = Math.max(0, Math.round(elapsedSeconds * 1000));
+  const whole = Math.floor(total / 1000);
   const days = Math.floor(whole / DAY);
   const rest = whole % DAY;
 
-  const hh = Math.floor(rest / HOUR);
-  const mm = Math.floor((rest % HOUR) / MINUTE);
-  const ss = rest % MINUTE;
-
-  // Floored, never rounded: rounding would let the readout show .00 for the
-  // next second a hundredth early, so seconds and hundredths would disagree.
-  const hundredths = Math.floor((ms % 1000) / 10);
+  const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+  const hours = pad(Math.floor(rest / HOUR));
+  const minutes = pad(Math.floor((rest % HOUR) / MINUTE));
+  const seconds = pad(rest % MINUTE);
 
   return {
     days,
-    clock: [hh, mm, ss].map((n) => String(n).padStart(2, "0")).join(":"),
-    hundredths: String(hundredths).padStart(2, "0"),
+    hours,
+    minutes,
+    seconds,
+    // Already an integer, so this is exact rather than rounded: the readout
+    // can never show 000 for the next second while the seconds still say this
+    // one.
+    millis: pad(total % 1000, 3),
+    clock: `${hours}:${minutes}:${seconds}`,
   };
 }
 
