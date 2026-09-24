@@ -20,6 +20,7 @@
     "ios:dev": "tauri ios dev",
     "ios:build": "tauri ios build",
     "doctor": "tauri info",
+    "icons": "tauri icon brand/icons.json",
     "db:link": "supabase link --project-ref $SUPABASE_PROJECT_REF",
     "db:push": "supabase db push",
     "db:diff": "supabase db diff --linked",
@@ -31,6 +32,8 @@
     "@supabase/supabase-js": "^2.45.4",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-notification": "^2.4.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -143,7 +143,7 @@ it now; the People tab went from ~61 renders a second to 1.
 | Milestone | State |
 |---|---|
 | 1. Accounts and the bare timer | Done. Timer, pulse hero, derived elapsed. |
-| 2. Cross-platform shell | Desktop done and building. Android/iOS configured, not built here — see below. |
+| 2. Cross-platform shell | Desktop done and building, with a self-updating installer. Android/iOS configured, not built here — see below. |
 | 3. The heartbeat | Done. Window, per-user and batch sweep, reset flow. |
 | 4. Push notifications | Code complete, unverified — needs credentials. |
 | 5. The time economy | Done. Ledger, sending, revive, follow/unfollow. |
@@ -183,6 +183,12 @@ it now; the People tab went from ~61 renders a second to 1.
   this; it is the one piece with no precedent in Nexo or Rater. The function
   skips any provider whose secrets are unset, so deploying it before you have
   credentials is harmless.
+- **The release workflow and a live update on Windows.** There is no
+  Windows machine here. The updater was compiled and a signed release build
+  was produced on Linux with the same key and config, and the staging script
+  and the update flow are unit-tested - but the first real run of
+  `release.yml`, and the first update from one installed version to the next,
+  are still to be watched.
 - **Supabase itself.** The migrations were validated against stock PostgreSQL
   with a small `auth` schema shim, not against a live Supabase project. The
   `auth.uid()` and `auth.users` integration points are the parts to watch.
@@ -210,6 +216,83 @@ that only the service role may execute.
 Note that every action already sweeps the specific rows it touches, so the
 scheduled job is a backstop for accounts nobody is interacting with rather than
 the only thing standing between a dead streak and the leaderboards.
+
+## Releasing the desktop app
+
+Windows users get one link that never changes:
+
+```
+https://github.com/YungDice/uptime-releases/releases/latest/download/Uptime_Installer.exe
+```
+
+The file name carries no version, so the link always serves the current
+build. Once installed, the app keeps itself current: it checks on launch and
+every six hours, downloads a newer build in the background, and offers a
+restart (Account → App → Updates does the same by hand). Restarting costs
+nothing, because the clock was never kept by the app.
+
+This repo is private, so the builds are published to a separate **public**
+repo, `YungDice/uptime-releases`, which holds nothing but releases. The
+installed app polls `latest.json` there; the source never leaves this repo.
+
+### Shipping a version
+
+```bash
+npm version patch         # 0.1.0 -> 0.1.1: bumps package.json, commits, tags
+git push --follow-tags    # the tag starts .github/workflows/release.yml
+```
+
+`package.json` is the only place the version is written - `tauri.conf.json`
+and the Account screen both read it. The workflow builds the NSIS installer on
+Windows, signs it, and publishes `Uptime_Installer.exe` and `latest.json` as
+the new latest release. It refuses a tag that disagrees with `package.json`
+and a version that is already out. It can also be started by hand from the
+Actions tab, which ships whatever `package.json` says.
+
+### One-time setup
+
+1. **Create the releases repo.** A public repo named `uptime-releases`, with
+   a README so it has a commit to hang the release tags on.
+2. **Give the workflow a token for it.** A fine-grained personal access token
+   with access to `uptime-releases` only and *Contents: Read and write*.
+   Save it in this repo as the Actions secret `RELEASES_TOKEN`.
+3. **Add the updater's signing key** as two Actions secrets:
+   `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The matching public key is
+   `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`; an installed app
+   refuses any update that was not signed with it. The key has a password
+   because a Windows runner drops an empty environment variable, and Tauri
+   then asks for a password with nobody there to type it.
+4. **Optionally**, the Actions variables `VITE_SUPABASE_URL` and
+   `VITE_SUPABASE_ANON_KEY`. Without them the release runs on browser
+   storage, as a fresh checkout does. `RELEASES_REPO` publishes somewhere
+   other than `YungDice/uptime-releases`; change the endpoint in
+   `tauri.conf.json` to match.
+
+**Keep a copy of the private key somewhere other than GitHub.** Secrets cannot
+be read back, and without the key no installed copy can ever be updated
+again: everyone would have to reinstall from a build signed with a new one. To
+replace it, run `npx tauri signer generate -w uptime-updater.key` with a
+password, put the `.pub` contents in `tauri.conf.json` and the key and
+password in the two secrets, and ship one release by installer rather than by
+update.
+
+A local `npm run desktop:build` is unaffected: it builds unsigned installers
+and never needs the key. The release build adds signing through
+`src-tauri/tauri.release.conf.json`.
+
+### The icons
+
+Every platform icon in `src-tauri/icons` is generated from `brand/`:
+
+```bash
+npm run icons
+```
+
+`brand/app-icon.svg` is the source for desktop and iOS; the Android adaptive
+icon gets its own foreground, background and monochrome layers so the launcher's
+mask never crops the mark. The installer's sidebar is
+`src-tauri/windows/installer-sidebar.bmp`.
 
 ---
 
