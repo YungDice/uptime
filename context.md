@@ -307,7 +307,12 @@ guesses.
   and the function runs push first, so a window gets one reminder. The switch
   is `reminder_settings` (absent = on), read through `uptime_account`, so it
   arrives on `Account`, not on the snapshot - `setEmailReminders` refreshes
-  rather than reusing `lastAccount`.
+  rather than reusing `lastAccount`. It sends over SMTP (Gmail with an App
+  Password) or Resend, chosen by `mailSettings` in `_shared/reminder.ts`;
+  the sending itself is `_shared/mailer.ts`, Deno-only because it imports
+  nodemailer by npm specifier. SMTP must be on 465: Edge Functions cannot
+  open 25 or 587, and a send there hangs rather than fails, so those are
+  refused before any connection.
 - **Revives do not count toward the daily send cap** (`sentInLastDay` in core,
   `uptime_sent_in_last_day` in `0017`). They were never held to it, but their
   cost counted toward it and then blocked the next send. They still count as
@@ -331,7 +336,7 @@ guesses.
 ```bash
 npm install
 npm run dev            # browser, http://localhost:1420
-npm test               # 222 tests, ~0.5s
+npm test               # 235 tests, ~0.5s
 npm run typecheck      # app, plus vite.config.ts against tsconfig.node.json
 npm run db:bundle      # regenerate supabase/deploy.sql after editing a migration
 npm run desktop:dev    # same app in a Tauri window
@@ -491,7 +496,7 @@ tools installed:
   need app links configured before a link can open them.
 - **The name `Uptime`** is a working title, baked into the bundle identifier
   `com.yungdice.uptime`.
-- **No component tests.** The 222 tests cover `src/core`, the store, the updater and the
+- **No component tests.** The 235 tests cover `src/core`, the store, the updater and the
   Stripe helper only;
   there is no DOM test environment installed (no jsdom, no Testing Library), so
   `useBackStack` and the screens are verified by driving a browser rather than

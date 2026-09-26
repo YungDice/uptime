@@ -19,7 +19,7 @@ lets a phone's stopwatch survive a restart.
 npm install
 npm run dev          # browser, http://localhost:1420
 npm run desktop:dev  # the same app in a Tauri window
-npm test             # 222 tests over the domain rules, the store, invites, the updater and the edge functions
+npm test             # 235 tests over the domain rules, the store, invites, the updater and the edge functions
 ```
 
 With no Supabase project configured the app runs against browser storage with
@@ -255,11 +255,21 @@ release that uses them.
 Three kinds of email go out, and Supabase's built-in mailer is meant for
 testing: it sends only a few an hour for the whole project. Before launch,
 point Supabase Auth at a real sender - Dashboard -> Authentication -> Emails ->
-SMTP Settings. Resend works, and the same account can send the reminder:
+SMTP Settings - and give `nudge-check-in` the same one:
 
-1. **A sender.** Create a Resend account, verify your domain, and make an API
-   key. Under SMTP Settings use host `smtp.resend.com`, port `465`, user
-   `resend`, the API key as the password, and a sender on your domain.
+1. **A sender.** Either works for both Supabase Auth and the reminder:
+   - **Gmail.** Turn on 2-Step Verification for the account, then make an App
+     Password at https://myaccount.google.com/apppasswords. SMTP Settings:
+     host `smtp.gmail.com`, port `465`, the Gmail address as both username and
+     sender, the App Password as the password. Gmail sends about 500 messages
+     a day per account, shared by everything above - fine at launch, and the
+     reason to move to a sending service once sign-ups outgrow it.
+   - **Resend.** Verify your own domain, make an API key. SMTP Settings: host
+     `smtp.resend.com`, port `465`, user `resend`, the key as the password,
+     a sender on your domain.
+
+   Use port **465** either way. Edge Functions cannot open 25 or 587, and
+   `nudge-check-in` refuses them rather than hang.
 2. **The password-reset code.** Resetting a password happens inside the app
    with a code, not a link: the link would open a browser, and a web page that
    takes new passwords is a page worth faking. Dashboard -> Authentication ->
@@ -279,14 +289,21 @@ SMTP Settings. Resend works, and the same account can send the reminder:
    turned it off (Account -> Reminder email):
 
    ```bash
+   # Gmail
+   supabase secrets set SMTP_HOST=smtp.gmail.com SMTP_PORT=465 SMTP_USER=you@gmail.com SMTP_PASS="abcd efgh ijkl mnop" REMINDER_FROM="Uptime <you@gmail.com>"
+   # or Resend
    supabase secrets set RESEND_API_KEY=re_... REMINDER_FROM="Uptime <reminders@your-domain>"
+
    supabase functions deploy nudge-check-in
    ```
 
-   Then schedule `nudge-check-in` daily (the header of `sweep-lapsed` shows
-   the `cron.schedule` call). Until both secrets are set the email half does
-   nothing and says so in its response, so deploying early is harmless. A
-   window gets one reminder: push and email both record into `nudges`.
+   `REMINDER_DAILY_LIMIT` caps one run (300 over SMTP, 1000 over Resend);
+   whoever is left is still inside their week and goes out the next day.
+   Then schedule `nudge-check-in` daily with pg_cron, keeping the service
+   role key in Vault rather than in the job's text. Until its secrets are
+   set the email half does nothing and says why in its response, so
+   deploying early is harmless. A window gets one reminder: push and email
+   both record into `nudges`.
 
 ### Invite links
 
