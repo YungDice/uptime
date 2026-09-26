@@ -6,8 +6,10 @@ Upload in Partner Center > your app > Store listing.
 | --- | --- | --- |
 | `logos/box-art-1x1-2160.png` (or `-1080`) | Store logos > 1:1 Box art (required for MSI/EXE apps) | 2160 x 2160 |
 | `logos/poster-art-2x3-1440x2160.png` | Store logos > 2:3 Poster art (recommended) | 1440 x 2160 |
-| `logos/app-tile-icon-300.png` | Store logos > 1:1 App tile icon | 300 x 300 |
-| `logos/super-hero-art-16x9-3840x2160.png` | 16:9 Super hero art (optional, no text by rule) | 3840 x 2160 |
+| `logos/app-tile-icon-300.png` | Store display images > 1:1 App tile icon | 300 x 300 |
+| `logos/app-tile-icon-150.png` | Store display images > 1:1 | 150 x 150 |
+| `logos/app-tile-icon-71.png` | Store display images > 1:1 | 71 x 71 |
+| `logos/super-hero-art-16x9-3840x2160.png` (or `-1920x1080`) | 16:9 Super hero art (optional, no text by rule) | 3840 x 2160 |
 | `screenshots/01..06-*.png` | Screenshots > Desktop, in this order | 3840 x 2160 |
 
 Suggested screenshot captions (Partner Center has a caption field per screenshot):
