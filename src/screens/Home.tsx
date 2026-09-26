@@ -32,6 +32,8 @@ interface Props {
   onRevive(): void;
   onOpenAccount(): void;
   onOpenProfile(userId: string): void;
+  /** Open the card and invite link. */
+  onShare(): void;
   /** Start buying the whole-clock upgrade. Absent where it is not on offer. */
   onUnlock?: () => void;
 }
@@ -55,6 +57,7 @@ export function Home({
   onRevive,
   onOpenAccount,
   onOpenProfile,
+  onShare,
   onUnlock,
 }: Props) {
   const { me } = snapshot;
@@ -159,6 +162,7 @@ export function Home({
           />
         ) : null}
         {live ? <Row label="Window closes" value={formatDate(now + windowLeft)} /> : null}
+        <Row label={<span className="text-run">Share your streak</span>} onClick={onShare} />
       </Section>
 
       <Section title="Given and received">

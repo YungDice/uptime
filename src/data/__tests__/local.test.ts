@@ -689,3 +689,107 @@ describe("LocalStore accounts", () => {
     expect(result.snapshot.totalSent).toBe(5 * MINUTE);
   });
 });
+describe("LocalStore invites, password resets and reminders", () => {
+  let clock: TestClock;
+  let store: LocalStore;
+  let storage: Storage;
+
+  beforeEach(async () => {
+    clock = new TestClock(T0);
+    storage = memoryStorage();
+    store = new LocalStore(clock, storage);
+    await store.start("you");
+  });
+
+  /** A brand new anonymous account in the same world, following nobody. */
+  async function stranger(): Promise<LocalStore> {
+    const other = new LocalStore(clock, storage);
+    await other.start("you");
+    await other.signOut();
+    return other;
+  }
+
+  it("keeps one invite code per account", async () => {
+    const first = await store.inviteCode();
+    expect(first).toMatch(/^[0-9a-f]{12}$/);
+    expect(await store.inviteCode()).toBe(first);
+  });
+
+  it("names the owner before anyone follows anyone", async () => {
+    const code = await store.inviteCode();
+    const other = await stranger();
+    expect((await other.previewInvite(` ${code.toUpperCase()} `))?.handle).toBe("you");
+    expect(await other.previewInvite("000000000000")).toBeNull();
+    // Looking is not following.
+    const snap = await other.refresh();
+    expect(snap.friends.some((f) => f.profile.handle === "you")).toBe(false);
+  });
+
+  it("makes the follow mutual in one step", async () => {
+    const code = await store.inviteCode();
+    const other = await stranger();
+    const result = await other.acceptInvite(code);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const inviter = result.snapshot.friends.find((f) => f.profile.handle === "you");
+    expect(inviter?.connected).toBe(true);
+    expect(result.message).toMatch(/follow each other/);
+  });
+
+  it("refuses your own link and a code that is not one", async () => {
+    const own = await store.acceptInvite(await store.inviteCode());
+    expect(own.ok).toBe(false);
+    if (!own.ok) expect(own.message).toMatch(/your own/i);
+    const bad = await store.acceptInvite("nope");
+    expect(bad.ok).toBe(false);
+  });
+
+  it("resets a forgotten password with the code, and signs in", async () => {
+    await store.signOut();
+    const asked = await store.requestPasswordReset("you@example.com");
+    expect(asked.ok).toBe(true);
+    const code = /(\d{6})/.exec(asked.message)?.[1] ?? "";
+
+    const wrong = await store.resetPassword("you@example.com", "000000", "a-new-password");
+    expect(wrong.ok).toBe(false);
+    const short = await store.resetPassword("you@example.com", code, "short");
+    expect(short.ok).toBe(false);
+
+    const done = await store.resetPassword("you@example.com", code, "a-new-password");
+    expect(done.ok).toBe(true);
+    if (done.ok) expect(done.snapshot.me.handle).toBe("you");
+    await store.signOut();
+    expect((await store.signIn("you@example.com", "a-new-password")).ok).toBe(true);
+  });
+
+  it("spends a reset code, and lets it run out after an hour", async () => {
+    const asked = await store.requestPasswordReset("you@example.com");
+    const code = /(\d{6})/.exec(asked.message)?.[1] ?? "";
+    expect((await store.resetPassword("you@example.com", code, "a-new-password")).ok).toBe(true);
+    expect((await store.resetPassword("you@example.com", code, "another-one")).ok).toBe(false);
+
+    const late = await store.requestPasswordReset("you@example.com");
+    const stale = /(\d{6})/.exec(late.message)?.[1] ?? "";
+    clock.advance(HOUR + 1);
+    expect((await store.resetPassword("you@example.com", stale, "a-new-password")).ok).toBe(false);
+  });
+
+  it("keeps the reminder email on unless it is turned off", async () => {
+    expect((await store.refresh()).account.emailReminders).toBe(true);
+    const off = await store.setEmailReminders(false);
+    expect(off.ok && off.snapshot.account.emailReminders).toBe(false);
+    const on = await store.setEmailReminders(true);
+    expect(on.ok && on.snapshot.account.emailReminders).toBe(true);
+  });
+
+  it("lets a free account send the same day it paid for a revive", async () => {
+    const snap = await store.refresh();
+    const broken = snap.friends.find((f) => f.revive)!;
+    // Either seeded rescue costs more than ten days, past the 7-day daily cap.
+    expect((await store.reviveFriend(broken.profile.id)).ok).toBe(true);
+    const running = (await store.refresh()).friends.find(
+      (f) => f.connected && isRunning(statusOf(f.streak, clock.now())),
+    )!;
+    expect((await store.sendTime(running.profile.id, HOUR)).ok).toBe(true);
+  });
+});

@@ -3,6 +3,7 @@ import {
   DAY,
   formatDate,
   formatDuration,
+  formatRemaining,
   isRunning,
   splitStopwatch,
   statusOf,
@@ -165,6 +166,13 @@ export function Profile({
               <p className="mt-2 text-micro font-semibold tracking-[0.14em] text-run uppercase">
                 Running
               </p>
+              {/* Said on their page as well as in the list, since a name tapped
+                  on a board may be the first place you see them. */}
+              {status.kind === "expiring" ? (
+                <p className="mt-1.5 text-footnote text-lapse">
+                  {formatRemaining(status.windowRemaining)} in their check-in window
+                </p>
+              ) : null}
             </>
           ) : them.revive ? (
             <>

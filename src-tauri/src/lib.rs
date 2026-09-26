@@ -31,6 +31,12 @@ pub fn run() {
 
     let builder = builder.plugin(tauri_plugin_notification::init());
 
+    // `uptime://add/<code>`: an invite link, opened from the invite page. The
+    // installer registers the scheme; the frontend reads what arrives
+    // (src/invites/deepLink.ts).
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_deep_link::init());
+
     // The desktop build updates itself from the signed feed named in
     // tauri.conf.json; the phones get theirs from the stores.
     //
@@ -50,6 +56,14 @@ pub fn run() {
             #[cfg(desktop)]
             if let Some(window) = _app.get_webview_window("main") {
                 fit_to_screen(&window);
+            }
+            // An installed build has its scheme written by the installer. A
+            // development build was never installed, so it registers itself -
+            // otherwise invite links could not be tried before a release.
+            #[cfg(all(desktop, debug_assertions))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let _ = _app.deep_link().register_all();
             }
             Ok(())
         })

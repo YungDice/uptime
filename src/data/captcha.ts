@@ -2,7 +2,7 @@
  * A Cloudflare Turnstile token for Supabase Auth's CAPTCHA check.
  *
  * Turnstile only runs on a public hostname, and the desktop app's page is
- * `http://tauri.localhost`, so the widget lives on a page of its own (`captcha/`,
+ * `http://tauri.localhost`, so the widget lives on a page of its own (`site/index.html`,
  * deployed to Cloudflare Pages - see README.md, "CAPTCHA page"). This loads
  * that page in a hidden iframe and waits for it to post a token back.
  *
@@ -13,7 +13,7 @@
  */
 
 /**
- * Where `captcha/` is deployed.
+ * Where `site/` is deployed.
  *
  * Also named in `frame-src` in src-tauri/tauri.conf.json, which is what lets
  * the desktop app frame it at all. Change the two together.

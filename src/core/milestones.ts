@@ -13,6 +13,26 @@ export interface MilestoneProgress {
 }
 
 /**
+ * The highest rung a run crossed between two readings of it, or null.
+ *
+ * For saying what happened while nobody was looking. A healthy user opens the
+ * app a few times a quarter, so the 100th day almost always goes by unseen -
+ * and it is the one moment the app has worth celebrating. `before` is the
+ * run's length at the last visit, `after` its length now.
+ */
+export function milestonePassed(
+  before: Seconds,
+  after: Seconds,
+  ladder: readonly number[] = MILESTONE_DAYS,
+): number | null {
+  let passed: number | null = null;
+  for (const mark of ladder) {
+    if (before < mark * DAY && after >= mark * DAY) passed = mark;
+  }
+  return passed;
+}
+
+/**
  * Where the current run sits on the milestone ladder.
  *
  * The fraction spans the gap between the last milestone and the next, not zero

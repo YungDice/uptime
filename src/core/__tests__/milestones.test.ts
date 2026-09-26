@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DAY } from "../constants";
-import { milestoneProgress } from "../milestones";
+import { milestonePassed, milestoneProgress } from "../milestones";
 
 describe("milestoneProgress", () => {
   it("targets the first rung on a brand new streak", () => {
@@ -27,5 +27,25 @@ describe("milestoneProgress", () => {
     const p = milestoneProgress(5000 * DAY);
     expect(p.nextDays).toBeNull();
     expect(p.fraction).toBe(1);
+  });
+});
+
+describe("milestonePassed", () => {
+  it("names the rung crossed between two readings of a run", () => {
+    expect(milestonePassed(95 * DAY, 101 * DAY)).toBe(100);
+  });
+
+  it("names the highest when several were crossed at once", () => {
+    // Away for a long stretch of a young run: 1, 7 and 30 all went by.
+    expect(milestonePassed(0.5 * DAY, 40 * DAY)).toBe(30);
+  });
+
+  it("is null when no rung was crossed", () => {
+    expect(milestonePassed(101 * DAY, 150 * DAY)).toBeNull();
+  });
+
+  it("counts a rung reached exactly, and not one already behind", () => {
+    expect(milestonePassed(99 * DAY, 100 * DAY)).toBe(100);
+    expect(milestonePassed(100 * DAY, 120 * DAY)).toBeNull();
   });
 });

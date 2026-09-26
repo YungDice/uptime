@@ -27,11 +27,13 @@ import {
   type StreakRun,
   type UserState,
 } from "@/core";
+import type { UserProfile } from "@/core/types";
 import { prepareAvatar, toDataUrl } from "./image";
 import type {
   ActionResult,
   CheckoutResult,
   FriendView,
+  Outcome,
   PublicProfile,
   Pulse,
   RankInfo,
@@ -69,7 +71,21 @@ interface World {
    * see `buyWholeClock`.
    */
   sendsWholeClock?: string[];
+  /** Each account's standing invite code, by user id. See `inviteCode`. */
+  inviteCodes?: Record<string, string>;
+  /** Accounts that turned the reminder email off. Absent means on. */
+  emailRemindersOff?: string[];
+  /**
+   * Password-reset codes waiting to be used, by email address.
+   *
+   * There is no inbox behind this adapter, so the code is handed back in the
+   * message that asks for it - see `requestPasswordReset`.
+   */
+  resetCodes?: Record<string, { code: string; at: Seconds }>;
 }
+
+/** How long a reset code works, as Supabase's default recovery OTP does. */
+const RESET_CODE_LIFETIME = 3600;
 
 function followKey(follower: string, followee: string): string {
   return follower + ">" + followee;
@@ -398,6 +414,115 @@ export class LocalStore implements UptimeStore {
     return { ok: true, snapshot: this.snapshot(), message: "Signed in." };
   }
 
+  async requestPasswordReset(email: string): Promise<Outcome> {
+    this.syncFromStorage();
+    const trimmed = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+      return { ok: false, message: "That does not look like an email address." };
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    (this.world.resetCodes ??= {})[trimmed] = { code, at: this.clock.now() };
+    this.persist();
+    // Handed back rather than mailed: there is no mail here. The server
+    // adapter says the same sentence either way; this one cannot hide
+    // whether the address exists anyway, since it is all in this browser.
+    return { ok: true, message: `On-device mode, so nothing was emailed. Your code is ${code}.` };
+  }
+
+  async resetPassword(email: string, code: string, password: string): Promise<ActionResult> {
+    this.syncFromStorage();
+    const trimmed = email.trim().toLowerCase();
+    const waiting = this.world.resetCodes?.[trimmed];
+    const now = this.clock.now();
+    if (!waiting || waiting.code !== code.replace(/\s+/g, "") || now - waiting.at > RESET_CODE_LIFETIME) {
+      return {
+        ok: false,
+        message: "That code didn't work. Check it, or ask for a new one - each one works once, for an hour.",
+      };
+    }
+    if (password.length < 8) {
+      return { ok: false, message: "Passwords need at least 8 characters." };
+    }
+    const owner = Object.entries(this.world.accounts ?? {}).find(([, a]) => a.email === trimmed);
+    // Spent either way, as a real one-time code is.
+    delete this.world.resetCodes?.[trimmed];
+    if (!owner) {
+      this.persist();
+      return { ok: false, message: "That code didn't work. Check it, or ask for a new one." };
+    }
+    owner[1].password = password;
+    this.world.meId = owner[0];
+    this.persist();
+    return { ok: true, snapshot: this.snapshot(), message: "Password changed. You're signed in." };
+  }
+
+  async setEmailReminders(on: boolean): Promise<ActionResult> {
+    this.syncFromStorage();
+    const me = this.me();
+    const off = (this.world.emailRemindersOff ?? []).filter((id) => id !== me.id);
+    this.world.emailRemindersOff = on ? off : [...off, me.id];
+    this.persist();
+    return {
+      ok: true,
+      snapshot: this.snapshot(),
+      message: on
+        ? "You'll get one email a week before your check-in window closes."
+        : "No reminder emails. Your streak works exactly the same without them.",
+    };
+  }
+
+  async inviteCode(): Promise<string> {
+    this.syncFromStorage();
+    const me = this.me();
+    const codes = (this.world.inviteCodes ??= {});
+    let code = codes[me.id];
+    if (code === undefined) {
+      code = Array.from({ length: 12 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+      codes[me.id] = code;
+      this.persist();
+    }
+    return code;
+  }
+
+  async previewInvite(code: string): Promise<UserProfile | null> {
+    this.syncFromStorage();
+    const owner = this.inviteOwner(code);
+    if (!owner) return null;
+    return {
+      id: owner.id,
+      handle: owner.handle,
+      displayName: owner.displayName,
+      avatarUrl: owner.avatarUrl,
+      createdAt: owner.createdAt,
+    };
+  }
+
+  async acceptInvite(code: string): Promise<ActionResult> {
+    const now = this.clock.now();
+    this.syncFromStorage();
+    const me = this.me();
+    const owner = this.inviteOwner(code);
+    if (!owner) return { ok: false, message: "That invite link doesn't work. Ask for a new one." };
+    if (owner.id === me.id) {
+      return { ok: false, message: "That is your own invite link. Send it to a friend." };
+    }
+
+    // Both directions at once: the owner agreed by handing the link out, and
+    // this is the other half. Only the caller is touched - the owner did
+    // nothing just now.
+    for (const key of [followKey(me.id, owner.id), followKey(owner.id, me.id)]) {
+      if (!this.world.follows.includes(key)) this.world.follows.push(key);
+    }
+    me.streak = touch(me.streak, now);
+    this.persist();
+
+    return {
+      ok: true,
+      snapshot: this.snapshot(),
+      message: `You and ${owner.displayName} follow each other now, so time can move between you.`,
+    };
+  }
+
   async signOut(): Promise<ActionResult> {
     this.syncFromStorage();
     // Drops to a fresh anonymous account rather than a dead screen.
@@ -641,6 +766,13 @@ export class LocalStore implements UptimeStore {
     return this.world.sendsWholeClock?.includes(userId) ?? false;
   }
 
+  /** Whose code this is. Case and stray spaces forgiven, as the SQL does. */
+  private inviteOwner(code: string): UserState | undefined {
+    const wanted = code.trim().toLowerCase();
+    const entry = Object.entries(this.world.inviteCodes ?? {}).find(([, c]) => c === wanted);
+    return entry ? this.world.users[entry[0]] : undefined;
+  }
+
   /** What this user may send right now. See `sendable`. */
   private sendableOf(user: UserState, now: Seconds): Seconds {
     return sendable(statusOf(user.streak, now), {
@@ -706,6 +838,7 @@ export class LocalStore implements UptimeStore {
       account: {
         isAnonymous: this.isAnonymous(me.id),
         email: this.world.accounts?.[me.id]?.email ?? null,
+        emailReminders: !(this.world.emailRemindersOff ?? []).includes(me.id),
       },
       me,
       status,

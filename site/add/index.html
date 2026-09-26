@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>An invite to Uptime</title>
+<meta name="description" content="Follow each other on Uptime, the stopwatch you never stop.">
+<!--
+  Uptime: where an invite link lands.
+
+  The link is https://<this host>/add/?c=<code>&n=<nickname>, made by the app
+  (src/invites/link.ts). The code is the whole invite - it stands for the
+  person who sent it. The nickname only lets this page say whose it is; it
+  proves nothing, and the app shows the code's real owner before anyone
+  accepts, so an edited `n` changes a caption and nothing else.
+
+  Nothing here talks to a server. It hands the code to the installed app
+  (uptime://add/<code>), offers the download to anyone without it, and keeps
+  the link copyable for the places a custom scheme will not open.
+-->
+<style>
+  :root {
+    --page: #000000;
+    --raise: #1c1c1e;
+    --label: #ffffff;
+    --label-2: #8e8e93;
+    --run: #ff9f0a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--page); color: var(--label); }
+  body {
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: max(48px, env(safe-area-inset-top)) 20px max(32px, env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 420px; text-align: center; }
+  .mark {
+    width: 96px; height: 96px; margin: 0 auto 28px; border-radius: 50%;
+    border: 6px solid var(--run);
+    box-shadow: 0 0 60px -10px rgb(255 159 10 / 45%);
+  }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; margin: 0 0 12px; }
+  p { font-size: 16px; line-height: 1.5; color: var(--label-2); margin: 0 0 12px; }
+  .buttons { display: flex; flex-direction: column; gap: 12px; margin: 28px 0 24px; }
+  a.button, button {
+    display: block; width: 100%; padding: 15px 20px; border-radius: 999px; border: 0;
+    font: inherit; font-size: 17px; font-weight: 600; text-decoration: none; cursor: pointer;
+  }
+  .primary { background: linear-gradient(180deg, #ffc75a, var(--run)); color: #1a1000; }
+  .secondary { background: var(--raise); color: var(--label); }
+  .small { font-size: 14px; }
+  .link {
+    display: block; margin: 8px 0 0; padding: 10px 12px; border-radius: 12px;
+    background: var(--raise); color: var(--label); font-size: 13px;
+    overflow-wrap: anywhere; user-select: all; text-align: left;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark" aria-hidden="true"></div>
+
+  <h1 id="title">You're invited to Uptime</h1>
+  <p>Uptime is a stopwatch you never stop. Follow each other, and time can move between your
+    clocks - to give some away, or to bring a broken streak back.</p>
+
+  <div id="valid">
+    <div class="buttons">
+      <a class="button primary" id="open" href="#">Open in Uptime</a>
+      <a class="button secondary" href="https://github.com/YungDice/uptime/releases/latest/download/Uptime_Installer.exe">Get Uptime for Windows</a>
+    </div>
+    <p class="small">Installed it just now? Open Uptime once, then come back and press
+      <strong>Open in Uptime</strong>. If nothing happens, copy this link and paste it into
+      <strong>People</strong> in the app:</p>
+    <span class="link" id="link"></span>
+    <div class="buttons">
+      <button type="button" class="secondary small" id="copy">Copy link</button>
+    </div>
+  </div>
+
+  <p id="invalid" hidden>This invite link is incomplete. Ask whoever sent it to copy it again.</p>
+</main>
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var code = (params.get("c") || "").trim().toLowerCase();
+    var name = (params.get("n") || "").trim().toLowerCase();
+
+    // The same shapes the app accepts; anything else is not an invite.
+    if (!/^[0-9a-z]{8,32}$/.test(code)) {
+      document.getElementById("valid").hidden = true;
+      document.getElementById("invalid").hidden = false;
+      return;
+    }
+    if (/^[a-z0-9_]{1,40}$/.test(name)) {
+      // textContent, never HTML: the nickname came from the address bar.
+      document.getElementById("title").textContent = "@" + name + " invited you to Uptime";
+      document.title = "@" + name + " invited you to Uptime";
+    }
+
+    document.getElementById("open").href = "uptime://add/" + code;
+    document.getElementById("link").textContent = location.href;
+
+    var copy = document.getElementById("copy");
+    copy.addEventListener("click", function () {
+      var done = function (text) {
+        copy.textContent = text;
+        setTimeout(function () { copy.textContent = "Copy link"; }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(location.href).then(
+          function () { done("Copied"); },
+          function () { done("Select the link above to copy it"); });
+      } else {
+        done("Select the link above to copy it");
+      }
+    });
+  })();
+</script>
+</body>
+</html>

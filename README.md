@@ -19,7 +19,7 @@ lets a phone's stopwatch survive a restart.
 npm install
 npm run dev          # browser, http://localhost:1420
 npm run desktop:dev  # the same app in a Tauri window
-npm test             # 192 tests over the domain rules, the store, the updater and the Stripe webhook
+npm test             # 222 tests over the domain rules, the store, invites, the updater and the edge functions
 ```
 
 With no Supabase project configured the app runs against browser storage with
@@ -98,7 +98,9 @@ same moment cannot deadlock.
 
 The rules around it are unchanged: time only moves between mutual follows,
 anonymous accounts cannot send, and at most 7 days can leave a free account per
-rolling 24 hours. Two follow from the new model: you can send at most what your
+rolling 24 hours. That cap counts sends only: a revive has its own price and
+never counts toward it, so rescuing someone does not use up the day's sending.
+Two follow from the new model: you can send at most what your
 clock reads, and the recipient's clock has to be running - a stopped one has
 nowhere for the time to land, and a lapsed one is what reviving is for.
 
@@ -242,6 +244,67 @@ Note that every action already sweeps the specific rows it touches, so the
 scheduled job is a backstop for accounts nobody is interacting with rather than
 the only thing standing between a dead streak and the leaderboards.
 
+**Deploy the database before the app.** A release that calls functions the
+database does not have yet shows "This Supabase project is missing ..." on
+those screens. `0017` adds invite links, the reminder email switch and the
+revive rule; ship it with `supabase db push` (or `deploy.sql`) before the
+release that uses them.
+
+### Email: sign-up, password reset and the reminder
+
+Three kinds of email go out, and Supabase's built-in mailer is meant for
+testing: it sends only a few an hour for the whole project. Before launch,
+point Supabase Auth at a real sender - Dashboard -> Authentication -> Emails ->
+SMTP Settings. Resend works, and the same account can send the reminder:
+
+1. **A sender.** Create a Resend account, verify your domain, and make an API
+   key. Under SMTP Settings use host `smtp.resend.com`, port `465`, user
+   `resend`, the API key as the password, and a sender on your domain.
+2. **The password-reset code.** Resetting a password happens inside the app
+   with a code, not a link: the link would open a browser, and a web page that
+   takes new passwords is a page worth faking. Dashboard -> Authentication ->
+   Emails -> **Reset Password**, and put the code in the template:
+
+   ```html
+   <h2>Reset your Uptime password</h2>
+   <p>Your code is <strong>{{ .Token }}</strong>. Enter it in Uptime, under
+   Account -> Sign in -> Forgot your password. It works once, for an hour.</p>
+   <p>If you didn't ask for this, ignore this email.</p>
+   ```
+
+   Without `{{ .Token }}` the email carries only a link, and the app has no
+   code to take.
+3. **The reminder.** One email a week before a check-in window closes, from
+   `nudge-check-in`, to accounts with a confirmed address that have not
+   turned it off (Account -> Reminder email):
+
+   ```bash
+   supabase secrets set RESEND_API_KEY=re_... REMINDER_FROM="Uptime <reminders@your-domain>"
+   supabase functions deploy nudge-check-in
+   ```
+
+   Then schedule `nudge-check-in` daily (the header of `sweep-lapsed` shows
+   the `cron.schedule` call). Until both secrets are set the email half does
+   nothing and says so in its response, so deploying early is harmless. A
+   window gets one reminder: push and email both record into `nudges`.
+
+### Invite links
+
+People -> **Invite**, or Home -> **Share your streak**, gives a link like
+`https://uptime-5jf.pages.dev/add/?c=<code>&n=<nickname>`. Opening it and
+saying yes makes the follow mutual in one step, which is what lets time move.
+
+- The **code** is the invite: one per account, 48 random bits, looked up at
+  most 60 times an hour per account (`0017`). A link built from the nickname
+  alone could be written by anyone and would make that person follow whoever
+  opened it. The nickname in the link only lets the page say whose it is.
+- The link opens `site/add/`, which hands the code to the app as
+  `uptime://add/<code>`. The installer registers that scheme
+  (`plugins.deep-link` in `tauri.conf.json`); a `desktop:dev` build registers
+  itself. Pasting the link into the People field does the same thing, for
+  anywhere a custom scheme will not open.
+- The app always shows whose invite it is before following anyone.
+
 ### Taking payments
 
 The whole-clock upgrade is sold through **Stripe Checkout**. The app asks
@@ -289,14 +352,18 @@ Things to know:
   (`src-tauri/capabilities/desktop.json`). A custom Stripe checkout domain
   needs adding there.
 
-### CAPTCHA page
+### The site: CAPTCHA page and invite page
 
-`captcha/` is a one-file page that produces a Cloudflare Turnstile token for
-the app. It lives on its own host because Turnstile only runs on a public
-hostname and the app's page is `http://tauri.localhost`. It is deployed at
-`https://uptime-5jf.pages.dev/`; `src/data/captcha.ts` loads it in a hidden
-iframe before each sign-in, and `frame-src` in `src-tauri/tauri.conf.json`
-allows that. Change all three together.
+`site/` is a small static site on Cloudflare Pages, deployed at
+`https://uptime-5jf.pages.dev/`. It has two pages:
+
+- `/` produces a Cloudflare Turnstile token for the app. It lives on its own
+  host because Turnstile only runs on a public hostname and the app's page is
+  `http://tauri.localhost`. `src/data/captcha.ts` loads it in a hidden iframe
+  before each sign-in, and `frame-src` in `src-tauri/tauri.conf.json` allows
+  that. Change all three together.
+- `/add/` is where invite links land (see Invite links, above).
+  `INVITE_PAGE_URL` in `src/invites/link.ts` names it.
 
 The app sends a token whenever `VITE_TURNSTILE_SITE_KEY` is set - in `.env`
 locally, and as a repository variable for the release build - and signs in
@@ -320,13 +387,14 @@ Deploy the page by hand, once:
 
 1. Cloudflare dashboard -> **Workers & Pages** -> **Create application** ->
    **Get started** -> **Drag and drop your files**. Name the project (the
-   name becomes `<name>.pages.dev`), drop the `captcha` folder, **Deploy site**.
-   Or: `npx wrangler pages deploy captcha --project-name <name>`.
+   name becomes `<name>.pages.dev`), drop the `site` folder, **Deploy site**.
+   Or: `npx wrangler pages deploy site --project-name <name>`. Redeploy it
+   whenever `site/` changes - the invite page is new since the first deploy.
 2. Cloudflare dashboard -> **Turnstile** -> **Add widget**: hostname
    `<name>.pages.dev`, mode **Invisible**. Keep the site key and secret key.
 
 The page takes the site key from its URL (`?sitekey=...`), so it never needs
-redeploying for a new key. `captcha/_headers` lists which app origins may
+redeploying for a new key. `site/_headers` lists which app origins may
 frame it; add the web build's origin there if it signs people in too. To test
 without real keys, use Turnstile's dummy site key `1x00000000000000000000BB`
 (always passes, invisible), which works on any host including localhost.
@@ -463,13 +531,15 @@ mask never crops the mark. The installer's sidebar is
 ## Accounts
 
 Playing without an account is a first-class state, not a trial. The clock starts
-on the first tap, the streak is real, and nothing nags. Two things stay switched
-off until there is an account:
+on the first tap, the streak is real, and nothing nags. Until there is an
+account:
 
 - the account does not appear on any leaderboard
 - it cannot send time or revive anyone
+- nobody can warn it before its streak would end - the reminder email needs an
+  address
 
-Both limits are the same defence. Anonymous accounts are free and unlimited, so
+The first two are the same defence. Anonymous accounts are free and unlimited, so
 a board that counted them would rank whoever scripted the most signups, and a
 ledger that accepted them would be a free supply of senders. Both are enforced
 in SQL (`0009_accounts.sql`) and mirrored in the local adapter, so the client
@@ -491,10 +561,10 @@ its next read.
 - **Following is the entry to everything social.** Gifts are gated on a mutual
   follow, so a fresh account can do nothing until it follows someone and is
   followed back. Names are tappable everywhere now and open a profile you can
-  follow from, so the leaderboards are a discovery surface — but there is still
-  no search, no suggestions and no invite links, and the only way to reach
-  somebody who is not already on a board is to type their nickname exactly.
-  That is probably the next thing worth designing.
+  follow from, so the leaderboards are a discovery surface, and an invite link
+  makes the follow mutual in one step. There is still no search and no
+  suggestions, and an invite link cannot be revoked yet - one that reaches the
+  wrong person can only be answered by unfollowing them.
 - **The name.** `Uptime` is the working name and is used throughout, including
   the bundle identifier `com.yungdice.uptime`. It has not had the gut check
   against the Yung Dice brand that the build prompt asked for.

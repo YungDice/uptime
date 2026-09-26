@@ -1,4 +1,12 @@
-import { DAY, formatDuration, isRunning, splitStopwatch, statusOf, type Seconds } from "@/core";
+import {
+  DAY,
+  formatDuration,
+  formatRemaining,
+  isRunning,
+  splitStopwatch,
+  statusOf,
+  type Seconds,
+} from "@/core";
 import type { FriendView } from "@/data/store";
 import { Section } from "@/components/List";
 import { Avatar } from "./Avatar";
@@ -44,13 +52,18 @@ export function FriendList({
   if (friends.length === 0) {
     return (
       <p className="px-5 py-10 text-center text-callout text-label-2">
-        Nobody here yet. Follow someone by nickname above - time only moves between people who
-        follow each other.
+        Nobody here yet. Send a friend your invite link, or follow someone by nickname above - time
+        only moves between people who follow each other.
       </p>
     );
   }
 
-  const running = friends.filter((f) => isRunning(statusOf(f.streak, now)));
+  // A friend inside the last week of their window is the one row in this list
+  // that something can still be done about before it is too late - by the
+  // viewer, with a message, rather than by the app with a notification. So it
+  // goes first, above the friends whose clocks are simply fine.
+  const closing = friends.filter((f) => statusOf(f.streak, now).kind === "expiring");
+  const running = friends.filter((f) => statusOf(f.streak, now).kind === "alive");
   const stopped = friends.filter((f) => !isRunning(statusOf(f.streak, now)));
 
   const rows = (list: FriendView[]) =>
@@ -71,6 +84,15 @@ export function FriendList({
 
   return (
     <>
+      {closing.length > 0 ? (
+        <Section title={`Closing soon (${closing.length})`}>
+          {rows(closing)}
+          <p className="px-5 pt-2.5 text-footnote text-label-2">
+            They haven't opened Uptime in a while. Opening it once is all it takes to keep a
+            streak going - worth telling them.
+          </p>
+        </Section>
+      ) : null}
       {running.length > 0 ? (
         <Section title={`Running (${running.length})`}>{rows(running)}</Section>
       ) : null}
@@ -115,7 +137,9 @@ function FriendRow({
     ? `Waiting for ${friend.profile.displayName} to follow you back`
     : friend.revive
       ? `Lost ${Math.floor(friend.revive.lostLength / DAY)} days - reviving brings back ${Math.floor(friend.revive.restores / DAY)}`
-      : null;
+      : status.kind === "expiring"
+        ? `${formatRemaining(status.windowRemaining)} in their check-in window`
+        : null;
   const stacked = note !== null;
 
   const sendButton = (
@@ -188,7 +212,15 @@ function FriendRow({
           two controls cannot sit on one line without the name wrapping. */}
       {stacked ? (
         <div className="hairline relative flex items-center gap-2 pr-5 pb-3">
-          <p className="flex-1 text-footnote text-label-2">{note}</p>
+          <p
+            className={`flex-1 text-footnote ${
+              friend.connected && !friend.revive && status.kind === "expiring"
+                ? "text-lapse"
+                : "text-label-2"
+            }`}
+          >
+            {note}
+          </p>
           {friend.revive ? (
             <button
               type="button"

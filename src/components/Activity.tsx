@@ -4,6 +4,7 @@ import {
   formatAgo,
   formatDuration,
   isIncoming,
+  milestonePassed,
   type ActivityItem,
   type Seconds,
 } from "@/core";
@@ -74,12 +75,27 @@ export function arrivalNotice(snapshot: Snapshot): string | null {
   const arrived = activityFor(snapshot.me.id, snapshot.recentGifts, snapshot.me.history).filter(
     (item) => isIncoming(item) && item.at > snapshot.windowAnchor,
   );
-  if (arrived.length === 0) return null;
+  const revive = arrived.find((item) => item.kind === "revived-you");
+
+  // Measured against this run's own start, and only for a run that was
+  // already going at the last visit: one started or revived since then did
+  // not "pass" anything while you were away. A revive is also said below,
+  // with what it brought back, which is the true account of that jump.
+  const { streakStart } = snapshot.me.streak;
+  const passed =
+    streakStart !== null && streakStart <= snapshot.windowAnchor && !revive
+      ? milestonePassed(snapshot.windowAnchor - streakStart, snapshot.serverNow - streakStart)
+      : null;
+
+  if (arrived.length === 0 && passed === null) return null;
 
   const name = (userId: string) => personIn(snapshot, userId)?.displayName ?? "someone";
   const parts: string[] = [];
 
-  const revive = arrived.find((item) => item.kind === "revived-you");
+  if (passed !== null) {
+    parts.push(`your streak passed ${passed} ${passed === 1 ? "day" : "days"}`);
+  }
+
   if (revive) {
     parts.push(
       `${name(revive.otherId)} revived your streak` +

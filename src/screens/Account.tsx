@@ -32,6 +32,10 @@ interface Props {
   now: Seconds;
   onSignUp(email: string, password: string, handle: string): void;
   onSignIn(email: string, password: string): void;
+  /** Email a reset code. Resolves true when one is on its way. */
+  onRequestReset(email: string): Promise<boolean>;
+  onResetPassword(email: string, code: string, password: string): void;
+  onSetEmailReminders(on: boolean): void;
   onSignOut(): void;
   onSetHandle(handle: string): void;
   onSetDisplayName(name: string): void;
@@ -94,16 +98,41 @@ function AppSection({ updater }: { updater: Updater }) {
  * cost the run - which is the only thing a user with 95 days on the clock
  * actually wants to know.
  */
-function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
+function Anonymous({
+  snapshot,
+  onSignUp,
+  onSignIn,
+  onRequestReset,
+  onResetPassword,
+}: Props) {
   const [mode, setMode] = useState<"up" | "in">("up");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
+  /**
+   * Where a forgotten password stands: not being reset, waiting for the
+   * address to send a code to, or waiting for that code.
+   */
+  const [recovering, setRecovering] = useState<"off" | "email" | "code">("off");
+  const [code, setCode] = useState("");
+  const [sending, setSending] = useState(false);
   const days = Math.max(0, Math.floor(snapshot.personalBest / DAY));
+
+  const askForCode = async () => {
+    if (sending) return;
+    setSending(true);
+    try {
+      if (await onRequestReset(email)) setRecovering("code");
+    } finally {
+      setSending(false);
+    }
+  };
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     if (mode === "up") onSignUp(email, password, nickname);
+    else if (recovering === "email") void askForCode();
+    else if (recovering === "code") onResetPassword(email, code, password);
     else onSignIn(email, password);
   };
 
@@ -111,7 +140,7 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
     <div className="pb-4">
       <p className="px-5 pt-5 text-callout text-label-2">
         You're playing without an account. Your clock is running and your streak is real - it just
-        stays on this device, and two things stay switched off:
+        stays on this device, and these stay switched off:
       </p>
       <ul className="mt-3 px-5">
         {ANONYMOUS_LIMITS.map((limit) => (
@@ -137,7 +166,10 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
               type="button"
               role="tab"
               aria-selected={mode === m}
-              onClick={() => setMode(m)}
+              onClick={() => {
+                setMode(m);
+                setRecovering("off");
+              }}
               className="flex-1 rounded-full py-1.5 text-callout font-medium transition-colors"
               style={{
                 color: mode === m ? "var(--color-run)" : "var(--color-label-2)",
@@ -153,13 +185,24 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
 
       <form onSubmit={submit} className="mt-4 flex flex-col gap-2 px-5">
         <Field label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
-        <Field
-          label="Password"
-          type="password"
-          value={password}
-          onChange={setPassword}
-          autoComplete={mode === "up" ? "new-password" : "current-password"}
-        />
+        {recovering === "code" ? (
+          <Field
+            label="Code from the email"
+            value={code}
+            onChange={setCode}
+            autoComplete="one-time-code"
+            inputMode="numeric"
+          />
+        ) : null}
+        {recovering !== "email" ? (
+          <Field
+            label={recovering === "code" ? "New password" : "Password"}
+            type="password"
+            value={password}
+            onChange={setPassword}
+            autoComplete={mode === "up" || recovering === "code" ? "new-password" : "current-password"}
+          />
+        ) : null}
         {mode === "up" ? (
           <Field
             label="Nickname"
@@ -175,17 +218,61 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
           {/* type="submit" is load-bearing: Capsule defaults to a plain button,
               and a form whose only control is one cannot be submitted at all -
               with three fields the browser suppresses Enter as well. */}
-          <Capsule type="submit" tone="run" wide>
-            {mode === "up" ? "Create account" : "Sign in"}
+          <Capsule type="submit" tone="run" wide disabled={recovering === "email" && sending}>
+            {mode === "up"
+              ? "Create account"
+              : recovering === "email"
+                ? "Email me a code"
+                : recovering === "code"
+                  ? "Set password and sign in"
+                  : "Sign in"}
           </Capsule>
         </div>
       </form>
+
+      {/* The way back into a months-long streak from a new computer, when
+          the password did not come with you. Plain buttons, not links: none
+          of this leaves the app. */}
+      {mode === "in" ? (
+        <div className="flex flex-wrap gap-x-5 gap-y-2 px-5 pt-3 text-footnote">
+          {recovering === "off" ? (
+            <button type="button" className="text-run" onClick={() => setRecovering("email")}>
+              Forgot your password?
+            </button>
+          ) : (
+            <>
+              {recovering === "code" ? (
+                <button
+                  type="button"
+                  className="text-run"
+                  disabled={sending}
+                  onClick={() => void askForCode()}
+                >
+                  Send a new code
+                </button>
+              ) : null}
+              <button type="button" className="text-label-2" onClick={() => setRecovering("off")}>
+                Back to sign in
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
 
       {mode === "up" ? (
         <p className="mt-4 px-5 text-footnote text-label-2">
           {days > 0
             ? `Your ${days}-day record carries over - creating an account upgrades this one rather than starting a new one.`
             : "Creating an account upgrades this one rather than starting a new one, so whatever is on the clock stays on it."}
+        </p>
+      ) : recovering === "email" ? (
+        <p className="mt-4 px-5 text-footnote text-label-2">
+          We'll email a code to this address. Entering it lets you choose a new password and signs you
+          in.
+        </p>
+      ) : recovering === "code" ? (
+        <p className="mt-4 px-5 text-footnote text-label-2">
+          The code is in the email we just sent. It works once, for an hour.
         </p>
       ) : (
         <p className="mt-4 px-5 text-footnote text-label-2">
@@ -204,9 +291,13 @@ function SignedIn({
   onSetHandle,
   onSetDisplayName,
   onSetAvatar,
+  onSetEmailReminders,
   onBuyWholeClock,
 }: Props) {
   const { me, account } = snapshot;
+  // `!== false`: a server a migration behind sends no flag, and the reminder
+  // is on unless someone turned it off.
+  const reminders = account.emailReminders !== false;
   const [nickname, setNickname] = useState(me.handle);
   const [name, setName] = useState(me.displayName);
   const [editing, setEditing] = useState(false);
@@ -337,6 +428,18 @@ function SignedIn({
           value={formatDuration(snapshot.totalSent)}
           tone={snapshot.totalSent > 0 ? "bank" : "default"}
         />
+        {/* One email, a week before the window closes - the warning a quiet
+            user would otherwise never get. A row that flips on a tap, like
+            Updates below, rather than a new kind of control. */}
+        {account.email !== null ? (
+          <Row
+            label="Reminder email"
+            value={reminders ? "On" : "Off"}
+            tone={reminders ? "run" : "default"}
+            sub="One email a week before your check-in window closes, and only then."
+            onClick={() => onSetEmailReminders(!reminders)}
+          />
+        ) : null}
       </Section>
 
       {/* Where this account stands on sending, and the one place that always
@@ -533,6 +636,7 @@ function Field({
   type = "text",
   hint,
   autoComplete,
+  inputMode,
 }: {
   label: string;
   value: string;
@@ -540,6 +644,7 @@ function Field({
   type?: string;
   hint?: string;
   autoComplete?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <label className="block">
@@ -549,6 +654,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
+        inputMode={inputMode}
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}

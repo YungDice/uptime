@@ -18,13 +18,16 @@ import { Account } from "@/screens/Account";
 import { Profile } from "@/screens/Profile";
 import { arrivalNotice } from "@/components/Activity";
 import { ConfirmSheet } from "@/components/ConfirmSheet";
+import { InviteSheet } from "@/components/InviteSheet";
 import { Capsule } from "@/components/List";
 import { SendSheet } from "@/components/SendSheet";
+import { ShareSheet } from "@/components/ShareSheet";
+import { listenForInvites } from "@/invites/deepLink";
 import { Shell } from "@/components/Shell";
 import { UpdateOffer } from "@/components/UpdateOffer";
 import { useUpdater } from "@/updates/useUpdater";
 import { canBuyHere, openCheckout } from "@/payments/checkout";
-import { DAY, formatDuration } from "@/core";
+import { DAY, formatDuration, isRunning, statusOf } from "@/core";
 import type { Tab } from "@/components/TabBar";
 import markUrl from "../brand/mark.svg";
 
@@ -40,18 +43,40 @@ export function App() {
   const [reviving, setReviving] = useState<{ profile: UserProfile; revive: Revive } | null>(null);
   const [trailingTo, setTrailingTo] = useState<string | null>(null);
   const [justCheckedIn, setJustCheckedIn] = useState(false);
+  /** The card and invite link, open to be sent somewhere. */
+  const [sharing, setSharing] = useState(false);
+  /** Somebody's invite code, waiting on a yes. From a link, or pasted. */
+  const [invite, setInvite] = useState<string | null>(null);
   /** A checkout being started, so a second tap does not open a second page. */
   const buying = useRef(false);
+
+  // Invite links that open the app, at launch or while it is running. Held
+  // until there is a snapshot to show the question over.
+  useEffect(() => {
+    let cancelled = false;
+    let stop: (() => void) | undefined;
+    void listenForInvites(setInvite).then((unlisten) => {
+      if (cancelled) unlisten();
+      else stop = unlisten;
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
 
   // What Android's back button unwinds, innermost first: any sheet, then the
   // profile behind it, then the tab, then the app itself. Without this, back
   // quits from wherever the user happens to be standing, which on a four-tab
   // app with two overlay layers is always wrong.
-  const sheetOpen = sending !== null || confirmingStop || reviving !== null;
+  const sheetOpen =
+    sending !== null || confirmingStop || reviving !== null || sharing || invite !== null;
   useBackStack(
     (tab === "clock" ? 0 : 1) + (viewing !== null ? 1 : 0) + (sheetOpen ? 1 : 0),
     () => {
-      if (sending) setSending(null);
+      if (invite !== null) setInvite(null);
+      else if (sharing) setSharing(false);
+      else if (sending) setSending(null);
       else if (reviving) setReviving(null);
       else if (confirmingStop) setConfirmingStop(false);
       else if (viewing !== null) setViewing(null);
@@ -203,6 +228,50 @@ export function App() {
     await session.run(() => store.checkIn());
   };
 
+  // Accepting lands on People, where the new connection now is.
+  const acceptInvite = async () => {
+    const code = invite;
+    if (code === null) return;
+    setInvite(null);
+    if (await session.run(() => store.acceptInvite(code))) {
+      setViewing(null);
+      setTab("people");
+    }
+  };
+
+  // Nothing on screen changes when a code is sent, so it is said rather than
+  // applied - and the form only moves on to the code field if one is coming.
+  const requestReset = async (email: string): Promise<boolean> => {
+    try {
+      const result = await store.requestPasswordReset(email);
+      session.announce(result.ok ? "good" : "bad", result.message);
+      return result.ok;
+    } catch (err) {
+      session.announce("bad", err instanceof Error ? err.message : "Could not send a code.");
+      return false;
+    }
+  };
+
+  // The card shows the run in progress, or the best one when nothing is running:
+  // a stopped clock reads 0, which is nothing to send anybody.
+  const shareStatus = statusOf(snapshot.me.streak, session.now);
+  const shareRunning = isRunning(shareStatus);
+  const shareDays = Math.floor(
+    (shareRunning ? shareStatus.elapsed : snapshot.personalBest) / DAY,
+  );
+  const shareFacts = {
+    days: shareDays,
+    caption: shareRunning
+      ? shareDays === 1
+        ? "day running"
+        : "days running"
+      : shareDays === 1
+        ? "day, best run"
+        : "days, best run",
+    displayName: snapshot.me.displayName,
+    handle: snapshot.me.handle,
+  };
+
   const confirmSend = async (amount: number) => {
     const target = sending;
     if (!target) return;
@@ -273,6 +342,7 @@ export function App() {
           onRevive={() => setTab("people")}
           onOpenAccount={() => setTab("account")}
           onOpenProfile={openProfile}
+          onShare={() => setSharing(true)}
           {...(canUnlock ? { onUnlock: () => void buyWholeClock() } : {})}
         />
       ) : null}
@@ -288,6 +358,8 @@ export function App() {
           now={session.now}
           trailingTo={trailingTo}
           onFollow={(handle) => session.run(() => store.follow(handle))}
+          onOpenInvite={setInvite}
+          onInvite={() => setSharing(true)}
           onSend={setSending}
           onRevive={askRevive}
           onOpenProfile={openProfile}
@@ -315,6 +387,11 @@ export function App() {
             void session.run(() => store.signUp(email, password, handle))
           }
           onSignIn={(email, password) => void session.run(() => store.signIn(email, password))}
+          onRequestReset={requestReset}
+          onResetPassword={(email, code, password) =>
+            void session.run(() => store.resetPassword(email, code, password))
+          }
+          onSetEmailReminders={(on) => void session.run(() => store.setEmailReminders(on))}
           onSignOut={() => void session.run(() => store.signOut())}
           onSetHandle={(handle) => void session.run(() => store.setHandle(handle))}
           onSetDisplayName={(name) => void session.run(() => store.setDisplayName(name))}
@@ -378,6 +455,10 @@ export function App() {
         />
       ) : null}
 
+      {sharing ? (
+        <ShareSheet facts={shareFacts} store={store} onClose={() => setSharing(false)} />
+      ) : null}
+
       {confirmingStop ? (
         <ConfirmSheet
           title="Stop the clock?"
@@ -399,6 +480,18 @@ export function App() {
             setConfirmingStop(false);
             void session.run(() => store.stopStreak());
           }}
+        />
+      ) : null}
+
+      {/* Last, so it sits over anything already open: a link can arrive
+          while the app is in any state at all. */}
+      {invite !== null ? (
+        <InviteSheet
+          code={invite}
+          store={store}
+          meId={snapshot.me.id}
+          onAccept={() => void acceptInvite()}
+          onClose={() => setInvite(null)}
         />
       ) : null}
     </Shell>

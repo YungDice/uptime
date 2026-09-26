@@ -292,17 +292,32 @@ export interface Pulse {
 export interface Account {
   isAnonymous: boolean;
   email: string | null;
+  /**
+   * Whether this account gets the one email a week before its check-in window
+   * closes. On unless turned off; meaningless without an address.
+   *
+   * Optional because a server a migration behind (before 0017) sends no such
+   * field - read it as `!== false`.
+   */
+  emailReminders?: boolean;
 }
 
-/** The two things an account unlocks, named so the UI can explain a refusal. */
+/** What an account unlocks, named so the UI can explain a refusal. */
 export const ANONYMOUS_LIMITS = [
   "You won't appear on any leaderboard.",
   "You can't send time or revive anyone.",
+  "Nobody can warn you before your streak would end.",
 ] as const;
 
 export type ActionResult =
   | { ok: true; snapshot: Snapshot; message: string }
   | { ok: false; message: string };
+
+/** An outcome that changes nothing on screen: something was sent, or not. */
+export interface Outcome {
+  ok: boolean;
+  message: string;
+}
 
 /**
  * Where buying the whole-clock upgrade goes next.
@@ -372,7 +387,35 @@ export interface UptimeStore {
    */
   signUp(email: string, password: string, handle: string): Promise<ActionResult>;
   signIn(email: string, password: string): Promise<ActionResult>;
+  /**
+   * Email a code that lets this address set a new password.
+   *
+   * Says the same thing whether or not the address has an account, so the
+   * form cannot be used to find out who plays.
+   */
+  requestPasswordReset(email: string): Promise<Outcome>;
+  /**
+   * Sign in with that code and set a new password in one step.
+   *
+   * A code rather than a link: the link would open in a browser, not in the
+   * app, and a web page that takes new passwords is a page worth copying.
+   */
+  resetPassword(email: string, code: string, password: string): Promise<ActionResult>;
   signOut(): Promise<ActionResult>;
+  /** Turn the reminder email on or off. See `Account.emailReminders`. */
+  setEmailReminders(on: boolean): Promise<ActionResult>;
+  /**
+   * This account's standing invite code, made on first ask.
+   *
+   * A code rather than the nickname: accepting an invite makes the follow go
+   * both ways, so the link has to prove its owner handed it out. A link built
+   * from a nickname could be written by anyone.
+   */
+  inviteCode(): Promise<string>;
+  /** Whose invite a code is, or null if it is not one. Asked before accepting. */
+  previewInvite(code: string): Promise<UserProfile | null>;
+  /** Follow each other with the code's owner, in one step. */
+  acceptInvite(code: string): Promise<ActionResult>;
   setHandle(handle: string): Promise<ActionResult>;
   setDisplayName(name: string): Promise<ActionResult>;
   /**

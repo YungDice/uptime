@@ -78,7 +78,8 @@ language on all three rather than per-OS native conventions.
   real piece of the rescuer's own run.
 - Time only moves between people who follow each other. A fresh account can do
   nothing socially until a follow is mutual. Discovery today is a handle field and
-  nothing else - no search, suggestions, or invite links. Explicitly undecided.
+  an invite link, which makes the follow mutual in one step - no search or
+  suggestions. Beyond that, explicitly undecided.
 - Leaderboards: current streak, longest ever, lifetime total, most donated, most
   received, most rescues.
 - Six terms are load-bearing and should stay stable: streak, sending time, the

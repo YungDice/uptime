@@ -4,6 +4,7 @@ import type { FriendView } from "@/data/store";
 import { FriendList } from "@/components/FriendList";
 import { Avatar } from "@/components/Avatar";
 import { Section } from "@/components/List";
+import { inviteCodeIn } from "@/invites/link";
 
 interface Props {
   friends: FriendView[];
@@ -19,6 +20,10 @@ interface Props {
   trailingTo: string | null;
   /** Resolves true when the follow went through. */
   onFollow(handle: string): Promise<boolean>;
+  /** Open somebody's invite, from a link pasted into the follow field. */
+  onOpenInvite(code: string): void;
+  /** Open your own invite link and card, to send to someone. */
+  onInvite(): void;
   onSend(friend: FriendView): void;
   onRevive(friend: FriendView): void;
   onOpenProfile(userId: string): void;
@@ -34,6 +39,8 @@ export function People({
   now,
   trailingTo,
   onFollow,
+  onOpenInvite,
+  onInvite,
   onSend,
   onRevive,
   onOpenProfile,
@@ -53,6 +60,15 @@ export function People({
     // name is the same name, not part of it.
     const trimmed = nickname.trim().replace(/^@/, "");
     if (trimmed.length === 0) return;
+    // An invite link pasted here is the way in wherever links do not open
+    // the app by themselves - the browser build, or a chat app that keeps
+    // links to itself. It goes to the same question the link would have.
+    const invite = inviteCodeIn(nickname);
+    if (invite) {
+      setNickname("");
+      onOpenInvite(invite);
+      return;
+    }
     // Cleared only once it worked. The usual refusal is "No account with that
     // nickname" - a typo - and emptying the field made the fix a whole name
     // retyped from memory rather than one character.
@@ -69,8 +85,8 @@ export function People({
           <input
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            placeholder="Follow by nickname"
-            aria-label="Nickname to follow"
+            placeholder="Nickname or invite link"
+            aria-label="Nickname or invite link to follow"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
@@ -88,6 +104,22 @@ export function People({
       </form>
 
       <YourNickname handle={handle} />
+
+      {/* The faster way in. A nickname has to be typed exactly and then
+          followed back; a link does both halves in one tap. */}
+      <div className="flex items-center gap-3 px-5 pt-2">
+        <p className="min-w-0 flex-1 text-footnote text-label-2">
+          Or send an invite link - opening it makes you follow each other.
+        </p>
+        <button
+          type="button"
+          onClick={onInvite}
+          className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-footnote font-semibold transition-transform active:scale-95"
+          style={{ color: "var(--color-run)", ["--tint" as string]: "var(--color-run)" }}
+        >
+          Invite
+        </button>
+      </div>
 
       {anonymous ? (
         <button

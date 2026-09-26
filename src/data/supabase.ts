@@ -2,10 +2,12 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { captchaToken, turnstileSiteKeyFromEnv } from "./captcha";
 import { prepareAvatar } from "./image";
 import { systemClock, type BoardEntry, type BoardId, type Clock, type Seconds } from "@/core";
+import type { UserProfile } from "@/core/types";
 import type {
   Account,
   ActionResult,
   CheckoutResult,
+  Outcome,
   PublicProfile,
   Pulse,
   RankInfo,
@@ -194,6 +196,87 @@ export class SupabaseStore implements UptimeStore {
       return { ok: false, message: authMessage(error) };
     }
     return { ok: true, snapshot: await this.refresh(), message: "Signed in." };
+  }
+
+  async requestPasswordReset(email: string): Promise<Outcome> {
+    const address = email.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
+      return { ok: false, message: "That does not look like an email address." };
+    }
+    // A recovery email is the other thing a script would repeat, so it
+    // carries a CAPTCHA token too whenever this build can get one.
+    const token = await captchaToken();
+    const { error } = await this.client.auth.resetPasswordForEmail(
+      address,
+      token === null ? {} : { captchaToken: token },
+    );
+    if (error) return { ok: false, message: captchaRefusal(error) ?? authMessage(error) };
+    // Worded for both answers on purpose: Supabase does not say whether the
+    // address has an account, and neither should the app.
+    return {
+      ok: true,
+      message: `If ${address} has an Uptime account, a code is on its way. Check your inbox.`,
+    };
+  }
+
+  async resetPassword(email: string, code: string, password: string): Promise<ActionResult> {
+    const { error } = await this.client.auth.verifyOtp({
+      email: email.trim(),
+      token: code.replace(/\s+/g, ""),
+      type: "recovery",
+    });
+    if (error) {
+      return {
+        ok: false,
+        message: unreachable(error)
+          ? OFFLINE
+          : "That code didn't work. Check it, or ask for a new one - each one works once, for an hour.",
+      };
+    }
+
+    // The code has already signed this device in, so a password the server
+    // turns down (too short, too common) still leaves the person in their
+    // account - it has to be said that way, not as a failure that sends them
+    // back to a form they no longer need.
+    const { error: refused } = await this.client.auth.updateUser({ password });
+    const snapshot = await this.refresh();
+    if (refused) {
+      return {
+        ok: true,
+        snapshot,
+        message: `You're signed in, but that password wasn't accepted: ${authMessage(refused)} Use Forgot password again to set one.`,
+      };
+    }
+    return { ok: true, snapshot, message: "Password changed. You're signed in." };
+  }
+
+  async setEmailReminders(on: boolean): Promise<ActionResult> {
+    const result = await this.rpc<{ ok: boolean; message: string }>("uptime_set_email_reminders", {
+      p_on: on,
+    });
+    if (!result.ok) return { ok: false, message: result.message };
+    // The switch lives on the account, which only a full read brings back -
+    // see `lastAccount`.
+    return { ok: true, snapshot: await this.refresh(), message: result.message };
+  }
+
+  async inviteCode(): Promise<string> {
+    const result = await this.rpc<{ ok: boolean; code?: string; message?: string }>(
+      "uptime_invite_code",
+      {},
+    );
+    if (!result.ok || typeof result.code !== "string") {
+      throw new Error(result.message ?? "Could not make an invite link. Try again.");
+    }
+    return result.code;
+  }
+
+  async previewInvite(code: string): Promise<UserProfile | null> {
+    return (await this.rpc<UserProfile | null>("uptime_invite_preview", { p_code: code })) ?? null;
+  }
+
+  async acceptInvite(code: string): Promise<ActionResult> {
+    return this.action("uptime_accept_invite", { p_code: code });
   }
 
   async signOut(): Promise<ActionResult> {

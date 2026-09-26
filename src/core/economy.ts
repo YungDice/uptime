@@ -235,11 +235,19 @@ export function checkGift(amount: Seconds, ctx: GiftContext): GiftCheck {
   return { ok: true };
 }
 
-/** Rolling-24h total, used for the cap. */
+/**
+ * Rolling-24h total, used for the cap.
+ *
+ * Sends only. A revive's price is on the ledger too, but a revive was never
+ * held to the cap - it has a price of its own - and counting it here meant a
+ * free account that rescued someone was told it had hit today's sending limit
+ * without having sent anything. Loose on `revivedStreakId`, which the SQL
+ * snapshot sends as null. SQL: `uptime_sent_in_last_day` (0017).
+ */
 export function sentInLastDay(gifts: readonly Gift[], userId: string, now: Seconds): Seconds {
   const cutoff = now - DAY;
   return gifts
-    .filter((g) => g.fromUserId === userId && g.createdAt > cutoff)
+    .filter((g) => g.fromUserId === userId && g.createdAt > cutoff && g.revivedStreakId == null)
     .reduce((sum, g) => sum + g.amount, 0);
 }
 

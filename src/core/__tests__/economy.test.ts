@@ -272,4 +272,17 @@ describe("ledger sums", () => {
   it("counts only the last 24 hours toward the cap", () => {
     expect(sentInLastDay(gifts, "a", T0)).toBe(3 * DAY);
   });
+
+  it("leaves a revive's price out of the cap", () => {
+    // The cap limits what is sent. A revive has its own price and was never
+    // held to the cap, but used to count toward it - so rescuing a friend
+    // told a free account it had hit a sending limit it had not sent against.
+    const revive = { ...gift("a", "d", 10), revivedStreakId: "d:1" };
+    expect(sentInLastDay([...gifts, revive], "a", T0)).toBe(3 * DAY);
+  });
+
+  it("still counts a revive as time given", () => {
+    const revive = { ...gift("a", "d", 10), revivedStreakId: "d:1" };
+    expect(totalSent([...gifts, revive], "a")).toBe(15 * DAY);
+  });
 });

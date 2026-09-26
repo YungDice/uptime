@@ -56,6 +56,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["uptime"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM2REI4QzkxNzMyQ0IyQzAKUldUQXNpeHprWXpieGcycGdqUklDRWF6akYrVlFUby9McnlodWFYZGV4aFhyV0xMMjg3U0pYcVoK",
       "endpoints": [

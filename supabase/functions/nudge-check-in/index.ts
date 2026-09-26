@@ -13,11 +13,20 @@
 //   FCM_SERVICE_ACCOUNT_JSON  Android. A service-account key, JSON, one line.
 //   APNS_KEY_P8 / APNS_KEY_ID / APNS_TEAM_ID / APNS_BUNDLE_ID   iOS.
 //   WNS_CLIENT_ID / WNS_CLIENT_SECRET                            Windows.
+//   RESEND_API_KEY / REMINDER_FROM                               Email, any platform.
+//
+// Email goes out after the pushes, to whoever a push did not reach: both
+// paths record into `nudges`, so a window gets one reminder whichever way it
+// arrives. It is the only route that works today - no build registers a push
+// token yet - and it needs nothing from the device at all. REMINDER_FROM is
+// the sender, e.g. `Uptime <reminders@your-domain>`, on a domain verified in
+// Resend.
 //
 // Deploy:   supabase functions deploy nudge-check-in
 // Schedule: daily, the same way as sweep-lapsed (see that function's header).
 
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { reminderEmail } from "../_shared/reminder.ts";
 
 interface DueRow {
   user_id: string;
@@ -104,8 +113,80 @@ Deno.serve(async (req: Request) => {
   });
 
   console.log(`nudge: ${sent} sent, ${skipped} skipped of ${rows.length} due`);
-  return json({ due: rows.length, sent, skipped });
+
+  const email = await remindByEmail(client, now);
+  return json({ due: rows.length, sent, skipped, email });
 });
+
+// --- Email ---------------------------------------------------------------
+
+interface EmailRow {
+  user_id: string;
+  email: string;
+  display_name: string;
+  streak_start: number;
+  deadline: number;
+}
+
+/**
+ * The reminder, by email, to everyone due one that no push reached.
+ *
+ * A failure here is logged and reported, never thrown: the pushes above have
+ * already gone out and been recorded, and a missing migration or a mail
+ * outage should not turn their success into a 500.
+ */
+async function remindByEmail(
+  client: SupabaseClient,
+  now: number,
+): Promise<{ due: number; sent: number; skipped: number } | { off: string }> {
+  const key = Deno.env.get("RESEND_API_KEY");
+  const from = Deno.env.get("REMINDER_FROM");
+  if (!key || !from) return { off: "RESEND_API_KEY or REMINDER_FROM is not set" };
+
+  const { data, error } = await client.rpc("uptime_due_for_email", { p_limit: 1000 });
+  if (error) {
+    console.error("email: could not list who is due", error.message);
+    return { off: error.message };
+  }
+
+  const rows = (data ?? []) as EmailRow[];
+  let sent = 0;
+  let skipped = 0;
+  await forEachLimited(rows, CONCURRENCY, async (row) => {
+    if (await sendEmail(row, now, key, from)) {
+      sent += 1;
+      await client.rpc("uptime_record_nudge", { p_user: row.user_id, p_deadline: row.deadline });
+    } else {
+      skipped += 1;
+    }
+  });
+
+  console.log(`email: ${sent} sent, ${skipped} skipped of ${rows.length} due`);
+  return { due: rows.length, sent, skipped };
+}
+
+async function sendEmail(row: EmailRow, now: number, key: string, from: string): Promise<boolean> {
+  const message = reminderEmail(row, now);
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+        // One per window. If the send lands but recording it does not, the
+        // next run tries again - and Resend recognises the key and does not
+        // send it twice.
+        "Idempotency-Key": `uptime-reminder-${row.user_id}-${row.deadline}`,
+      },
+      body: JSON.stringify({ from, to: [row.email], ...message }),
+    });
+    if (!res.ok) console.error("email", res.status, await res.text());
+    return res.ok;
+  } catch (err) {
+    console.error("email failed", err);
+    return false;
+  }
+}
 
 /** Run `work` over `items` with at most `limit` in flight. */
 async function forEachLimited<T>(
@@ -295,7 +376,7 @@ function b64url(bytes: Uint8Array): string {
     .replace(/=+$/, "");
 }
 
-function pemToBytes(pem: string): Uint8Array {
+function pemToBytes(pem: string): Uint8Array<ArrayBuffer> {
   const body = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
   return Uint8Array.from(atob(body), (c) => c.charCodeAt(0));
 }

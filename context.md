@@ -34,11 +34,13 @@ a year of the server being asleep.
 | `src/notifications/` | Client half of the check-in prompt. |
 | `src/platform.ts` | Which platform the bundle is running on. |
 | `src/payments/` | Where the whole-clock upgrade can be bought, and opening Stripe Checkout. |
+| `src/invites/` | Invite links (`link.ts`: build and read them), the `uptime://` listener (`deepLink.ts`), and the share card (`card.ts`, drawn on a canvas). |
 | `src/components/ErrorBoundary.tsx` | The only thing standing between a render error and a black window. |
-| `supabase/migrations/` | `0001`–`0014`. The rules again, in SQL. |
+| `site/` | The static site on Cloudflare Pages: the CAPTCHA page at `/`, the invite landing page at `/add/`. Deployed by hand. |
+| `supabase/migrations/` | `0001`–`0017`. The rules again, in SQL. |
 | `supabase/deploy.sql` | Every migration concatenated, for the SQL editor. Generated: `npm run db:bundle`. |
 | `scripts/` | `build-deploy-sql.mjs`, which generates the above. |
-| `supabase/functions/` | `sweep-lapsed`, `nudge-check-in`, and the payment pair `create-checkout` and `stripe-webhook`, sharing `_shared/stripe.ts`. |
+| `supabase/functions/` | `sweep-lapsed`, `nudge-check-in` (push, then the reminder email), and the payment pair `create-checkout` and `stripe-webhook`. Testable logic lives in `_shared/` (`stripe.ts`, `reminder.ts`), because importing an `index.ts` starts a server. |
 | `src-tauri/` | The native shell. One Rust crate for all platforms. |
 
 Import alias: `@/` → `src/`. Set in both `vite.config.ts` and `tsconfig.json` —
@@ -288,6 +290,28 @@ guesses.
   them so the Boards tab can say so; before it did, both boards read "Nothing
   on this board yet" to anyone who had just given time, which at launch is
   everyone.
+- **Invites are a code, never a nickname** (`invite_codes`, `0017`). Accepting
+  one makes the follow go both ways, so the link has to prove its owner handed
+  it out - a link built from a nickname could be written by anyone. The `n` in
+  the page link is a caption only; the app shows the code's owner
+  (`uptime_invite_preview`) before anyone accepts. Preview and accept share a
+  60-an-hour lookup limit. `inviteCodeIn` reads codes only out of links,
+  never bare: the People field takes nicknames, and twelve hex digits is a
+  valid one. Codes cannot be revoked yet.
+- **Password reset is a code typed into the app** (`verifyOtp` with type
+  `recovery`), not a link. It depends on the Supabase "Reset Password" email
+  template containing `{{ .Token }}` - the default template does not, and
+  then the email has nothing to type. See README, Email.
+- **The reminder email shares `nudges` with push.** Both `uptime_due_for_nudge`
+  and `uptime_due_for_email` skip anyone already recorded for this deadline,
+  and the function runs push first, so a window gets one reminder. The switch
+  is `reminder_settings` (absent = on), read through `uptime_account`, so it
+  arrives on `Account`, not on the snapshot - `setEmailReminders` refreshes
+  rather than reusing `lastAccount`.
+- **Revives do not count toward the daily send cap** (`sentInLastDay` in core,
+  `uptime_sent_in_last_day` in `0017`). They were never held to it, but their
+  cost counted toward it and then blocked the next send. They still count as
+  time given, on the board and on Account.
 - **Network failures are said in the app's words** (`unreachable` and
   `OFFLINE` in `src/data/supabase.ts`). supabase-js never throws on a dead
   network; it resolves with the engine's own "TypeError: Failed to fetch",
@@ -307,7 +331,7 @@ guesses.
 ```bash
 npm install
 npm run dev            # browser, http://localhost:1420
-npm test               # 192 tests, ~0.5s
+npm test               # 222 tests, ~0.5s
 npm run typecheck      # app, plus vite.config.ts against tsconfig.node.json
 npm run db:bundle      # regenerate supabase/deploy.sql after editing a migration
 npm run desktop:dev    # same app in a Tauri window
@@ -460,13 +484,14 @@ tools installed:
 - **Supabase was validated against stock PostgreSQL (17, and 16 for `0013`)
   with an `auth`/`storage` schema shim**, not a live project. `auth.uid()` and
   `auth.users.is_anonymous` are the integration points to watch.
-- **Discovery is one handle field on the People tab.** No search, no
-  suggestions, no invite links. Gifts are gated on a *mutual* follow, so a
-  fresh account can do nothing until it follows someone and is followed back.
-  The README flags this as the next thing worth designing.
+- **Discovery is a handle field and invite links.** No search, no
+  suggestions. Gifts are gated on a *mutual* follow; an invite link makes one
+  in a step, a nickname still needs following back. Invite codes cannot be
+  revoked, and `uptime://` is registered on desktop only - the phone builds
+  need app links configured before a link can open them.
 - **The name `Uptime`** is a working title, baked into the bundle identifier
   `com.yungdice.uptime`.
-- **No component tests.** The 192 tests cover `src/core`, the store, the updater and the
+- **No component tests.** The 222 tests cover `src/core`, the store, the updater and the
   Stripe helper only;
   there is no DOM test environment installed (no jsdom, no Testing Library), so
   `useBackStack` and the screens are verified by driving a browser rather than
