@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uptime</title>
+</head>
+<body>
+<!--
+  Uptime: one Turnstile token for the app that framed this page.
+
+  Turnstile only runs on a public hostname, and the app's own page is
+  http://tauri.localhost, so the widget lives here instead. The app loads this
+  page in a hidden iframe, gets back { captchaToken } or { captchaError }, and
+  hands the token to Supabase Auth.
+
+  The site key rides in the URL (?sitekey=...), so this page never needs
+  redeploying when the key changes. Who may frame it is set in _headers, which
+  is why the token can be posted to whichever parent that turned out to be.
+
+  Deployed to Cloudflare Pages by hand; see README.md, "CAPTCHA page".
+-->
+<div id="widget"></div>
+<script>
+  function send(message) {
+    parent.postMessage(message, "*");
+  }
+
+  // Named in the api.js URL below, so it has to exist before that loads.
+  function start() {
+    var sitekey = new URLSearchParams(location.search).get("sitekey");
+    if (!sitekey) {
+      send({ captchaError: "missing-sitekey" });
+      return;
+    }
+    turnstile.render("#widget", {
+      sitekey: sitekey,
+      callback: function (token) { send({ captchaToken: token }); },
+      "error-callback": function (code) { send({ captchaError: String(code) }); },
+      "expired-callback": function () { send({ captchaError: "expired" }); },
+    });
+  }
+</script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=start&render=explicit" async defer></script>
+</body>
+</html>

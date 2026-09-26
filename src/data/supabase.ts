@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { captchaToken, turnstileSiteKeyFromEnv } from "./captcha";
 import { prepareAvatar } from "./image";
 import { systemClock, type BoardEntry, type BoardId, type Clock, type Seconds } from "@/core";
 import type {
@@ -64,13 +65,19 @@ export class SupabaseStore implements UptimeStore {
       // Anonymous sign-in keeps the first run frictionless; the account is
       // real and can be upgraded to email later. It is off by default on a new
       // Supabase project, and the raw error does not say where to turn it on.
-      const { error } = await this.client.auth.signInAnonymously();
+      // It is also the sign-in a script would repeat to mint accounts, so it
+      // carries a CAPTCHA token whenever this build can get one.
+      const token = await captchaToken();
+      const { error } = await this.client.auth.signInAnonymously(
+        token === null ? undefined : { options: { captchaToken: token } },
+      );
       if (error) {
         throw new Error(
-          /anonymous/i.test(error.message)
-            ? "Anonymous sign-ins are disabled for this Supabase project. " +
-              "Turn them on under Authentication - Sign In / Providers."
-            : error.message,
+          captchaRefusal(error) ??
+            (/anonymous/i.test(error.message)
+              ? "Anonymous sign-ins are disabled for this Supabase project. " +
+                "Turn them on under Authentication - Sign In / Providers."
+              : error.message),
         );
       }
     }
@@ -155,8 +162,13 @@ export class SupabaseStore implements UptimeStore {
   }
 
   async signIn(email: string, password: string): Promise<ActionResult> {
-    const { error } = await this.client.auth.signInWithPassword({ email, password });
+    const token = await captchaToken();
+    const { error } = await this.client.auth.signInWithPassword(
+      token === null ? { email, password } : { email, password, options: { captchaToken: token } },
+    );
     if (error) {
+      const refused = captchaRefusal(error);
+      if (refused !== null) return { ok: false, message: refused };
       // "Invalid login credentials" is what Supabase says when an address is
       // still only *pending* on this account, because until the link is
       // clicked no user actually owns it. That reads as "wrong password" and
@@ -404,6 +416,21 @@ async function functionError(error: { message: string; context?: unknown }): Pro
     }
   }
   return "Could not start the payment. Try again in a moment.";
+}
+
+/**
+ * Supabase's refusal of a sign-in with no valid CAPTCHA token, in plain words.
+ *
+ * Supabase says "captcha verification process failed", which is true and
+ * helps nobody. Which of two things went wrong depends on whether this build
+ * could ask for a token at all: one built without the site key never can, and
+ * that is a release problem rather than something the user can retry past.
+ */
+function captchaRefusal(error: { code?: string | undefined; message: string }): string | null {
+  if (error.code !== "captcha_failed" && !/captcha/i.test(error.message)) return null;
+  return turnstileSiteKeyFromEnv() === null
+    ? "This version of Uptime can't pass the sign-in check. Update the app and try again."
+    : "Couldn't confirm you're a person. Check your connection and try again.";
 }
 
 /**

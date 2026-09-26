@@ -1,0 +1,12 @@
+# Cloudflare Pages reads this file and sends these headers with every page.
+#
+# frame-ancestors is the list of apps allowed to load the CAPTCHA page in a
+# frame. Without it, any site could frame it and collect tokens from its own
+# visitors to open accounts on ours. The origins are the desktop app on
+# Windows and Android (http/https tauri.localhost), on macOS and iOS
+# (tauri://localhost), and `npm run dev`. Add the web build's origin here if
+# it signs people in too.
+/*
+  Content-Security-Policy: frame-ancestors http://tauri.localhost https://tauri.localhost tauri://localhost http://localhost:1420
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff

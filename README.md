@@ -288,6 +288,48 @@ Things to know:
   (`src-tauri/capabilities/desktop.json`). A custom Stripe checkout domain
   needs adding there.
 
+### CAPTCHA page
+
+`captcha/` is a one-file page that produces a Cloudflare Turnstile token for
+the app. It lives on its own host because Turnstile only runs on a public
+hostname and the app's page is `http://tauri.localhost`. It is deployed at
+`https://uptime-5jf.pages.dev/`; `src/data/captcha.ts` loads it in a hidden
+iframe before each sign-in, and `frame-src` in `src-tauri/tauri.conf.json`
+allows that. Change all three together.
+
+The app sends a token whenever `VITE_TURNSTILE_SITE_KEY` is set - in `.env`
+locally, and as a repository variable for the release build - and signs in
+without one otherwise. That is what makes the rollout safe, in this order:
+
+1. Ship a release built with the site key (Settings -> Secrets and variables
+   -> Actions -> Variables -> `VITE_TURNSTILE_SITE_KEY`).
+2. Wait until installed copies have updated to it.
+3. Only then switch CAPTCHA on: Supabase dashboard -> Authentication ->
+   Attack Protection -> Enable CAPTCHA protection -> Turnstile, with the
+   widget's secret key. Switching it on first stops every older copy signing
+   in, since the app signs in anonymously on first launch and after sign-out.
+4. Turn the release workflow's missing-key warning into an error.
+
+Automated browsers get error `600010` from the real widget - Turnstile
+detecting a bot, as designed - so check the real key from a browser you drive
+yourself: `npm run dev`, open `http://localhost:1420`, and in the console run
+`(await import("/src/data/captcha.ts")).captchaToken()`.
+
+Deploy the page by hand, once:
+
+1. Cloudflare dashboard -> **Workers & Pages** -> **Create application** ->
+   **Get started** -> **Drag and drop your files**. Name the project (the
+   name becomes `<name>.pages.dev`), drop the `captcha` folder, **Deploy site**.
+   Or: `npx wrangler pages deploy captcha --project-name <name>`.
+2. Cloudflare dashboard -> **Turnstile** -> **Add widget**: hostname
+   `<name>.pages.dev`, mode **Invisible**. Keep the site key and secret key.
+
+The page takes the site key from its URL (`?sitekey=...`), so it never needs
+redeploying for a new key. `captcha/_headers` lists which app origins may
+frame it; add the web build's origin there if it signs people in too. To test
+without real keys, use Turnstile's dummy site key `1x00000000000000000000BB`
+(always passes, invisible), which works on any host including localhost.
+
 ## Releasing the desktop app
 
 Windows users get two links that never change:

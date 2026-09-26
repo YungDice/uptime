@@ -46,7 +46,12 @@ jobs:
           PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TOKEN: ${{ secrets.RELEASES_TOKEN }}
           SAME_REPO: ${{ (vars.RELEASES_REPO || github.repository) == github.repository }}
+          TURNSTILE: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
         run: |
+          # A warning, not a failure, while CAPTCHA is still off in Supabase.
+          # Once it is on, a release without the key cannot sign anyone in:
+          # make this an error then.
+          [ -n "$TURNSTILE" ] || echo "::warning::No VITE_TURNSTILE_SITE_KEY variable - this build will not send CAPTCHA tokens. See README.md, CAPTCHA page."
           missing=0
           [ -n "$KEY" ] || { echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY secret - see README.md, Releasing the desktop app."; missing=1; }
           [ -n "$PASSWORD" ] || { echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY_PASSWORD secret - see README.md, Releasing the desktop app."; missing=1; }
@@ -90,6 +95,10 @@ jobs:
           # fine; a secret works too.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          # The Turnstile site key, public like the anon key. Without it this
+          # build signs in with no CAPTCHA token, which only works while
+          # CAPTCHA is off in Supabase. See README.md, "CAPTCHA page".
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
         run: npm run tauri -- build --bundles nsis,msi --config src-tauri/tauri.release.conf.json
 
       - name: Stage the installers and latest.json
