@@ -27,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * names reserved for the app. The identity it assigned,
  * DiceEntertainment.UptimeStreakStopwatch, is made from this name.
  */
-export const STORE_DISPLAY_NAME = "Uptime Streak Stopwatch";
+export const STORE_DISPLAY_NAME = "Uptime: Streak Stopwatch";
 
 /**
  * The images the manifest names, every scale and size Windows asks for.
