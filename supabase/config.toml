@@ -23,6 +23,32 @@ enable_refresh_token_rotation = true
 [auth.email]
 enable_signup = true
 
+# Branded emails (same files go into the hosted dashboard: Auth > Emails).
+# Anonymous users upgrade via updateUser({ email }), which sends email_change.
+[auth.email.template.confirmation]
+subject = "Confirm your email"
+content_path = "./supabase/templates/confirm-signup.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your email"
+content_path = "./supabase/templates/change-email.html"
+
+[auth.email.template.invite]
+subject = "You're invited to Uptime"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.magic_link]
+subject = "Your Uptime sign-in link"
+content_path = "./supabase/templates/magic-link.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Uptime password"
+content_path = "./supabase/templates/reset-password.html"
+
+[auth.email.template.reauthentication]
+subject = "Your Uptime verification code"
+content_path = "./supabase/templates/reauthentication.html"
+
 [functions.sweep-lapsed]
 verify_jwt = false
 
