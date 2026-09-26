@@ -19,7 +19,7 @@ lets a phone's stopwatch survive a restart.
 npm install
 npm run dev          # browser, http://localhost:1420
 npm run desktop:dev  # the same app in a Tauri window
-npm test             # 235 tests over the domain rules, the store, invites, the updater and the edge functions
+npm test             # 248 tests over the domain rules, the store, invites, the updater and the edge functions
 ```
 
 With no Supabase project configured the app runs against browser storage with
@@ -316,10 +316,10 @@ saying yes makes the follow mutual in one step, which is what lets time move.
   alone could be written by anyone and would make that person follow whoever
   opened it. The nickname in the link only lets the page say whose it is.
 - The link opens `site/add/`, which hands the code to the app as
-  `uptime://add/<code>`. The installer registers that scheme
-  (`plugins.deep-link` in `tauri.conf.json`); a `desktop:dev` build registers
-  itself. Pasting the link into the People field does the same thing, for
-  anywhere a custom scheme will not open.
+  `uptime://add/<code>`. The downloaded app registers that scheme for itself
+  on every launch - the 0.1.8 installer was found not to - and the Store copy
+  declares it in its package manifest. Pasting the link into the People field
+  does the same thing, for anywhere a custom scheme will not open.
 - The app always shows whose invite it is before following anyone.
 
 ### Taking payments
@@ -541,7 +541,58 @@ npm run icons
 `brand/app-icon.svg` is the source for desktop and iOS; the Android adaptive
 icon gets its own foreground, background and monochrome layers so the launcher's
 mask never crops the mark. The installer's sidebar is
-`src-tauri/windows/installer-sidebar.bmp`.
+`src-tauri/windows/installer-sidebar.bmp`. The Microsoft Store package scales
+its images from `src-tauri/icons/icon.png` when it is built, so it follows too.
+
+### The Microsoft Store
+
+Uptime goes into the Store as an **MSIX package**, not as the EXE/MSI
+installer. That is the route where Microsoft signs the package for free after
+certification; an EXE or MSI submitted to the Store has to arrive already
+signed with a certificate bought from a CA.
+
+The Store copy is the same app with one difference: **it does not update
+itself.** It is installed into a folder only the Store may write to, so the
+self-updater is left out (the `store` Cargo feature, and `VITE_UPTIME_STORE=microsoft`
+for the frontend, which also makes Account say "Updates: Microsoft Store").
+It updates when a new package is submitted. Everything else - Supabase,
+invites, the Stripe upgrade - is unchanged; Store policy 10.8.1 lets non-game
+PC apps take payments through a third party.
+
+**Building it.** Every release run builds `Uptime_<version>_x64.msix` after
+publishing the GitHub release and puts it in the run's artifacts (Actions ->
+the run -> Artifacts). Locally, on Windows with the Windows SDK installed:
+
+```bash
+npm run store:msix
+```
+
+The package lands in `release/`. `scripts/build-msix.mjs` builds the Store copy
+of the app, scales the icon to every size Windows asks for, writes the
+resource index (`makepri`) and packs it (`makeappx`, which also checks the
+manifest against Microsoft's schema).
+
+**Its identity** is fixed in `src-tauri/msix/AppxManifest.xml`, from Partner
+Center -> Product management -> Product identity:
+`DiceEntertainment.UptimeStreakStopwatch`, publisher
+`CN=56A36FC1-BB7D-4C5C-B792-EBDCC2907AB3`, `Dice Entertainment`. The display
+name is `STORE_DISPLAY_NAME` in `scripts/build-msix.mjs` and has to be exactly
+the name reserved in Partner Center, or the upload is refused.
+
+**Submitting.** Partner Center -> the app -> Start submission -> Packages ->
+drag in the `.msix`. Each submission needs a higher version than the last: the
+package version is `package.json`'s, with a fourth number of 0
+(`0.1.9` -> `0.1.9.0`), so release first and submit that release's package.
+
+**Trying it before submitting** needs Windows' Developer Mode (Settings ->
+System -> For developers), because the package is unsigned. Then, from the
+repo, after `npm run store:msix`:
+
+```powershell
+Add-AppxPackage -Register src-tauri\target\msix\layout\AppxManifest.xml
+```
+
+It appears in Start as the Store copy would. `Get-AppxPackage *UptimeStreak* | Remove-AppxPackage` removes it.
 
 ---
 

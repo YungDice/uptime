@@ -26,6 +26,18 @@ export type Platform = "windows" | "macos" | "linux" | "android" | "ios" | "web"
  */
 export type PushPlatform = "apns" | "fcm" | "wns";
 
+/**
+ * True in the copy built for the Microsoft Store (`npm run store:msix`).
+ *
+ * A build-time fact, not a runtime guess: the Store copy is the same Windows
+ * app, installed into a folder only the Store may write to. It cannot replace
+ * itself, so it must never try - the Store updates it instead. Read at call
+ * time rather than once, so a test can switch it.
+ */
+export function isStoreBuild(): boolean {
+  return import.meta.env["VITE_UPTIME_STORE"] === "microsoft";
+}
+
 /** True inside any Tauri shell - desktop or mobile - false in a plain browser. */
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

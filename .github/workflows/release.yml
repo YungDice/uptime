@@ -2,7 +2,8 @@ name: Release
 
 # Builds the Windows installers - Uptime_Installer.exe and Uptime_Installer.msi -
 # signs them for the updater, and publishes them as a GitHub release together
-# with latest.json, the feed installed copies poll.
+# with latest.json, the feed installed copies poll. Then builds the Microsoft
+# Store package, Uptime_<version>_x64.msix, into the run's artifacts.
 #
 # To ship a version:
 #   npm run release          # tests, bumps package.json, tags vX.Y.Z, pushes
@@ -145,6 +146,18 @@ jobs:
             --notes "$notes" \
             --latest
           echo "Published https://github.com/$RELEASES_REPO/releases/tag/v$version"
+
+      # The Microsoft Store copy: the same app without the self-updater, packed
+      # as an unsigned MSIX for Partner Center, which signs it after
+      # certification. After Publish on purpose, so a problem here never holds
+      # up the download link. It goes into this run's artifacts rather than the
+      # release: an unsigned package is no use to anyone outside the Store.
+      - name: Build the Microsoft Store package
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+        run: npm run store:msix
 
       - uses: actions/upload-artifact@v4
         with:

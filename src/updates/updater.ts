@@ -1,4 +1,4 @@
-import { currentPlatform, isMobile, isTauri } from "@/platform";
+import { currentPlatform, isMobile, isStoreBuild, isTauri } from "@/platform";
 
 /**
  * Keeping the desktop build current.
@@ -47,7 +47,9 @@ export interface UpdaterApi {
 }
 
 export function canSelfUpdate(): boolean {
-  return isTauri() && !isMobile();
+  // Not the Store copy: it lives in a folder it cannot write to, and an
+  // installer run from inside it would put a second, separate Uptime beside it.
+  return isTauri() && !isMobile() && !isStoreBuild();
 }
 
 /** Loaded lazily so the browser and phone builds never pull in the plugins. */
@@ -145,13 +147,14 @@ function describe(error: unknown): string {
 }
 
 /**
- * Where the phone apps get their updates, for the Updates row to say so.
+ * Where a store-installed copy gets its updates, for the Updates row to say so.
  *
- * Null on desktop, which updates itself, and in a browser, which is updated by
- * reloading - neither has a store to name.
+ * Null on a desktop copy installed from the download, which updates itself,
+ * and in a browser, which is updated by reloading - neither has a store to name.
  */
 export function updateStore(): string | null {
   if (!isTauri()) return null;
+  if (isStoreBuild()) return "Microsoft Store";
   const platform = currentPlatform();
   if (platform === "android") return "Google Play";
   if (platform === "ios") return "App Store";

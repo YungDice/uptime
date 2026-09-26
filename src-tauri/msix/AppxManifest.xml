@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Uptime's Microsoft Store package. A template: scripts/build-msix.mjs fills in
+  {{VERSION}} and {{DISPLAY_NAME}} and packs it with the Store build of
+  uptime.exe (npm run store:msix).
+
+  The Identity values are the ones Partner Center assigned (Product management
+  -> Product identity). They must match exactly or the upload is refused. The
+  package is left unsigned: the Store signs it after certification.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 rescap">
+
+  <Identity
+    Name="DiceEntertainment.UptimeStreakStopwatch"
+    Publisher="CN=56A36FC1-BB7D-4C5C-B792-EBDCC2907AB3"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>{{DISPLAY_NAME}}</DisplayName>
+    <PublisherDisplayName>Dice Entertainment</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>A stopwatch you never stop, and a streak you keep by existing.</Description>
+  </Properties>
+
+  <!-- 1809 and later. WebView2, which draws the whole app, is part of every
+       supported Windows 10 and 11 and is not packaged here. -->
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Uptime" Executable="uptime.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="{{DISPLAY_NAME}}"
+        Description="A stopwatch you never stop, and a streak you keep by existing."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+
+      <Extensions>
+        <!-- Invite links. A downloaded install writes this into the registry;
+             a packaged app has no installer, so it is declared here. The link
+             arrives as the only argument, which is exactly what the deep-link
+             plugin looks for (tauri-plugin-deep-link, handle_cli_arguments).
+             uap3, because Parameters - the "%1" - only exists from there on;
+             makeappx refuses it on uap:Protocol. -->
+        <uap:Extension Category="windows.protocol">
+          <uap3:Protocol Name="uptime" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Uptime invite link</uap:DisplayName>
+          </uap3:Protocol>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <!-- Every packaged Win32 app declares this; it is what lets uptime.exe
+         run as the ordinary desktop program it is. -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

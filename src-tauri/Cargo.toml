@@ -35,3 +35,7 @@ tauri-plugin-deep-link = "2"
 [features]
 # Used by `tauri dev` to enable devtools in release-ish builds.
 custom-protocol = ["tauri/custom-protocol"]
+# The Microsoft Store copy (`npm run store:msix`). It is installed into a
+# folder only the Store may write to, so it leaves out the self-updater: the
+# Store updates it instead.
+store = []

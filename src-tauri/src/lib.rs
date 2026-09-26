@@ -47,9 +47,14 @@ pub fn run() {
     // builds do not sell one (see `canBuyHere` in src/payments/checkout.ts).
     #[cfg(desktop)]
     let builder = builder
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init());
+
+    // Not in the Microsoft Store copy, which lives in a folder it cannot
+    // write to: the Store updates it. The frontend already stops asking
+    // (isStoreBuild), and leaving the plugin out means nothing can.
+    #[cfg(all(desktop, not(feature = "store")))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
         .setup(|_app| {
@@ -57,10 +62,15 @@ pub fn run() {
             if let Some(window) = _app.get_webview_window("main") {
                 fit_to_screen(&window);
             }
-            // An installed build has its scheme written by the installer. A
-            // development build was never installed, so it registers itself -
-            // otherwise invite links could not be tried before a release.
-            #[cfg(all(desktop, debug_assertions))]
+            // Point uptime:// at this exe, on every launch. The installer was
+            // meant to, and the 0.1.8 install on the developer's own machine
+            // was found without it - so invite links opened nothing, with no
+            // error anywhere. Rewriting three per-user registry values costs
+            // nothing and also covers a development build, which was never
+            // installed at all. Not the Store copy: its package declares the
+            // scheme (src-tauri/msix/AppxManifest.xml), and a packaged app's
+            // registry writes are its own private copy anyway.
+            #[cfg(all(desktop, not(feature = "store")))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let _ = _app.deep_link().register_all();

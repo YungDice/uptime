@@ -1,10 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  canSelfUpdate,
   failureReason,
   fetchUpdate,
   installUpdate,
   updateDetail,
   updateLabel,
+  updateStore,
   type DownloadEvent,
   type PendingUpdate,
   type UpdateState,
@@ -182,5 +184,31 @@ describe("why an update failed", () => {
     expect(updateDetail({ phase: "failed", message: "Disk full" })).toBe("Disk full");
     expect(updateDetail({ phase: "ready", version: "0.2.0" })).toMatch(/Downloaded/);
     expect(updateDetail({ phase: "current" })).toBeNull();
+  });
+});
+
+describe("the Microsoft Store copy", () => {
+  // A Windows desktop Tauri window, as far as platform.ts can tell.
+  function onWindowsDesktop() {
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", maxTouchPoints: 0 });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("updates itself when installed from the download", () => {
+    onWindowsDesktop();
+    expect(canSelfUpdate()).toBe(true);
+    expect(updateStore()).toBeNull();
+  });
+
+  it("leaves updates to the Store, and says so, when installed from it", () => {
+    onWindowsDesktop();
+    vi.stubEnv("VITE_UPTIME_STORE", "microsoft");
+    expect(canSelfUpdate()).toBe(false);
+    expect(updateStore()).toBe("Microsoft Store");
   });
 });

@@ -298,6 +298,23 @@ guesses.
   60-an-hour lookup limit. `inviteCodeIn` reads codes only out of links,
   never bare: the People field takes nicknames, and twelve hex digits is a
   valid one. Codes cannot be revoked yet.
+- **`uptime://` is registered by the app, not trusted to the installer.** The
+  0.1.8 NSIS install on the developer's machine left no
+  `HKCU\Software\Classes\uptime`, so invite links opened nothing and said
+  nothing. `register_all()` in `lib.rs` now rewrites it on every launch of the
+  downloaded build. The link reaches the app as its only argument
+  (`uptime.exe "uptime://add/<code>"`), which is the one shape the deep-link
+  plugin accepts on Windows - keep the `"%1"` in both registrations.
+- **The Microsoft Store copy is two switches that must travel together**: the
+  `store` Cargo feature (no updater plugin) and `VITE_UPTIME_STORE=microsoft`
+  (`isStoreBuild()`: no update checks, Account names the Store). One without
+  the other is a Store app that tries to replace itself, or a download that
+  never updates. `npm run store:msix` sets both; build it no other way.
+  In `src-tauri/msix/AppxManifest.xml`, the protocol is `uap3:Protocol`
+  because `Parameters` does not exist on `uap:Protocol` (makeappx refuses
+  it), and `build-msix.mjs` strips makepri's `<packaging>` section, which
+  would otherwise move every 200% and 400% image into side files a lone
+  `.msix` never loads.
 - **Password reset is a code typed into the app** (`verifyOtp` with type
   `recovery`), not a link. It depends on the Supabase "Reset Password" email
   template containing `{{ .Token }}` - the default template does not, and
@@ -336,7 +353,7 @@ guesses.
 ```bash
 npm install
 npm run dev            # browser, http://localhost:1420
-npm test               # 235 tests, ~0.5s
+npm test               # 248 tests, ~0.5s
 npm run typecheck      # app, plus vite.config.ts against tsconfig.node.json
 npm run db:bundle      # regenerate supabase/deploy.sql after editing a migration
 npm run desktop:dev    # same app in a Tauri window
@@ -496,7 +513,7 @@ tools installed:
   need app links configured before a link can open them.
 - **The name `Uptime`** is a working title, baked into the bundle identifier
   `com.yungdice.uptime`.
-- **No component tests.** The 235 tests cover `src/core`, the store, the updater and the
+- **No component tests.** The 248 tests cover `src/core`, the store, the updater and the
   Stripe helper only;
   there is no DOM test environment installed (no jsdom, no Testing Library), so
   `useBackStack` and the screens are verified by driving a browser rather than
