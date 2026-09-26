@@ -191,6 +191,17 @@ export function isRevivable(who: { revive?: Revive | null }): boolean {
 }
 
 /**
+ * Who an id in the ledger belongs to, as far as this snapshot knows.
+ *
+ * Time only moves across a mutual follow, so whoever sent or received a gift
+ * was in `friends` at the time - but either side may have unfollowed since,
+ * so null is an ordinary answer, not an error.
+ */
+export function personIn(snapshot: Snapshot, userId: string): UserProfile | null {
+  return snapshot.friends.find((f) => f.profile.id === userId)?.profile ?? null;
+}
+
+/**
  * Someone else, as their profile page needs them.
  *
  * Deliberately not a `FriendView`. That shape exists to draw a row in a list

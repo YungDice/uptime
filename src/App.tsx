@@ -16,7 +16,9 @@ import { Boards } from "@/screens/Boards";
 import { People } from "@/screens/People";
 import { Account } from "@/screens/Account";
 import { Profile } from "@/screens/Profile";
+import { arrivalNotice } from "@/components/Activity";
 import { ConfirmSheet } from "@/components/ConfirmSheet";
+import { Capsule } from "@/components/List";
 import { SendSheet } from "@/components/SendSheet";
 import { Shell } from "@/components/Shell";
 import { UpdateOffer } from "@/components/UpdateOffer";
@@ -63,6 +65,19 @@ export function App() {
   // so a reload does not say it again.
   const ready = session.snapshot !== null;
   const { announce } = session;
+
+  // Say once, on launch, what other people did while the app was closed. The
+  // pulse only hears about gifts while the app is open, and the face jumping
+  // by two days is not an explanation. Declared before the checkout effect so
+  // that, on a return from paying, the payment is what gets said.
+  const greeted = useRef(false);
+  const first = session.snapshot;
+  useEffect(() => {
+    if (greeted.current || first === null) return;
+    greeted.current = true;
+    const text = arrivalNotice(first);
+    if (text) announce("good", text);
+  }, [first, announce]);
   useEffect(() => {
     if (!ready) return;
     const params = new URLSearchParams(window.location.search);
@@ -94,7 +109,17 @@ export function App() {
   if (session.error && !snapshot) {
     return (
       <Shell tab={tab} onTab={setTab}>
-        <p className="px-5 pt-16 text-center text-callout text-lapse">{session.error}</p>
+        <div className="flex flex-col items-center px-5 pt-16">
+          <p className="text-center text-callout text-lapse">{session.error}</p>
+          <p className="mt-2 text-center text-footnote text-label-2">
+            Your clock keeps running whether or not the app can reach it.
+          </p>
+          <div className="mt-6 flex w-full max-w-xs">
+            <Capsule tone="run" wide onClick={session.retry}>
+              Try again
+            </Capsule>
+          </div>
+        </div>
       </Shell>
     );
   }
@@ -247,6 +272,7 @@ export function App() {
           onSend={() => setTab("people")}
           onRevive={() => setTab("people")}
           onOpenAccount={() => setTab("account")}
+          onOpenProfile={openProfile}
           {...(canUnlock ? { onUnlock: () => void buyWholeClock() } : {})}
         />
       ) : null}
@@ -254,6 +280,7 @@ export function App() {
       {tab === "people" ? (
         <People
           friends={snapshot.friends}
+          handle={snapshot.me.handle}
           giveable={giveable}
           spendable={spendable}
           anonymous={snapshot.account.isAnonymous}
@@ -270,7 +297,7 @@ export function App() {
       {tab === "boards" ? (
         <Boards
           store={store}
-          meId={snapshot.me.id}
+          me={snapshot.me}
           anonymous={snapshot.account.isAnonymous}
           onOpenAccount={() => setTab("account")}
           onOpenProfile={openProfile}

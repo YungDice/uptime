@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { BOARDS, formatDuration, type BoardEntry, type BoardId } from "@/core";
-import type { UptimeStore } from "@/data/store";
+import type { UserProfile } from "@/core/types";
+import type { RankInfo, UptimeStore } from "@/data/store";
 import { Avatar } from "@/components/Avatar";
+import { Section } from "@/components/List";
 import { Podium } from "@/components/Podium";
 
 /**
@@ -16,32 +18,48 @@ import { Podium } from "@/components/Podium";
  */
 export function Boards({
   store,
-  meId,
+  me,
   anonymous,
   onOpenAccount,
   onOpenProfile,
 }: {
   store: UptimeStore;
-  meId: string;
+  me: UserProfile;
   anonymous: boolean;
   onOpenAccount(): void;
   onOpenProfile(userId: string): void;
 }) {
   const [active, setActive] = useState<BoardId>("current-streak");
   const [entries, setEntries] = useState<BoardEntry[] | null>(null);
+  const [mine, setMine] = useState<RankInfo | null>(null);
 
+  // The board and your place on it arrive together, so switching boards never
+  // shows the new rows under the previous board's placing.
   useEffect(() => {
     let cancelled = false;
     setEntries(null);
-    void store.board(active).then((rows) => {
-      if (!cancelled) setEntries(rows);
+    setMine(null);
+    void Promise.all([
+      store.board(active),
+      // Unranked is an ordinary answer, and so is a placing that could not be
+      // read; neither is worth holding the board back for.
+      anonymous ? null : store.myRank(active).catch(() => null),
+    ]).then(([rows, rank]) => {
+      if (cancelled) return;
+      setEntries(rows);
+      setMine(rank);
     });
     return () => {
       cancelled = true;
     };
-  }, [active, store]);
+  }, [active, anonymous, store]);
 
+  const meId = me.id;
   const meta = BOARDS.find((b) => b.id === active);
+  // Only when the list does not already show you: a board of twenty says
+  // nothing to the person in forty-first place about where they stand.
+  const offBoard =
+    entries !== null && mine !== null && !entries.some((entry) => entry.userId === meId);
 
   return (
     <div className="pb-4">
@@ -111,6 +129,28 @@ export function Boards({
               ))}
             </ol>
           ) : null}
+
+          {offBoard ? (
+            <Section title="Your place">
+              <ol>
+                <RankRow
+                  entry={{
+                    userId: me.id,
+                    handle: me.handle,
+                    displayName: me.displayName,
+                    avatarUrl: me.avatarUrl,
+                    value: mine.value,
+                    // The board's own rows say which unit it counts in.
+                    unit: entries[0]?.unit ?? "seconds",
+                  }}
+                  place={mine.position}
+                  isMe
+                  delay={0}
+                  onOpen={() => onOpenProfile(me.id)}
+                />
+              </ol>
+            </Section>
+          ) : null}
         </div>
       )}
     </div>
@@ -146,7 +186,7 @@ function RankRow({
         className="hairline flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors active:bg-raise"
       >
         <span
-          className="tnum w-6 shrink-0 text-callout font-medium"
+          className="tnum min-w-6 shrink-0 text-callout font-medium"
           style={{ color: isMe ? "var(--color-run)" : "var(--color-label-3)" }}
         >
           {place}

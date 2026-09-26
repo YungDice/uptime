@@ -147,6 +147,23 @@ export function formatRemaining(seconds: Seconds): string {
 }
 
 /**
+ * When something happened, for lists of past events: `3 hr ago`, `5 days ago`.
+ *
+ * Relative for the first month, where "how long since" is the useful answer,
+ * and a date after that, where "40 days ago" makes the reader do arithmetic.
+ */
+export function formatAgo(at: Seconds, now: Seconds): string {
+  const since = Math.max(0, Math.floor(now - at));
+  if (since < MINUTE) return "just now";
+  if (since < HOUR) return `${Math.floor(since / MINUTE)} min ago`;
+  if (since < DAY) return `${Math.floor(since / HOUR)} hr ago`;
+  const days = Math.floor(since / DAY);
+  if (days === 1) return "1 day ago";
+  if (days <= 30) return `${days} days ago`;
+  return formatDate(at);
+}
+
+/**
  * Fixed to en-US rather than the device locale: the rest of the interface is
  * English, and a German month name beside English labels reads as a bug. Swap
  * this for the active locale when the app is actually localised.

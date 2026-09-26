@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { CHECK_IN_WINDOW, DAY, HOUR, MINUTE, isRunning, statusOf, toDays } from "@/core";
+import {
+  CHECK_IN_WINDOW,
+  DAY,
+  HOUR,
+  MINUTE,
+  activityFor,
+  isRunning,
+  statusOf,
+  toDays,
+} from "@/core";
 import { liveClock, liveGiveable } from "../store";
 import { LocalStore } from "../local";
 
@@ -244,6 +253,21 @@ describe("LocalStore", () => {
     const result = await store.reviveFriend(broken.profile.id);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toMatch(/isn't running/i);
+  });
+
+  it("tells the revived account who brought its streak back, and how much", async () => {
+    const snap = await store.refresh();
+    const broken = snap.friends.find((f) => f.revive)!;
+    const { restores } = broken.revive!;
+    expect((await store.reviveFriend(broken.profile.id)).ok).toBe(true);
+
+    await store.signIn(`${broken.profile.handle}@example.com`, "uptime-demo");
+    const theirs = await store.refresh();
+    const [item] = activityFor(theirs.me.id, theirs.recentGifts, theirs.me.history);
+
+    expect(item?.kind).toBe("revived-you");
+    expect(item?.otherId).toBe(snap.me.id);
+    expect(item?.restored).toBe(restores);
   });
 
   it("counts a revive on the rescues board", async () => {

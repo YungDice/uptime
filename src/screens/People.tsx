@@ -7,6 +7,8 @@ import { Section } from "@/components/List";
 
 interface Props {
   friends: FriendView[];
+  /** Your own nickname, which is what anyone following you has to type. */
+  handle: string;
   /** What the viewer can give, live. */
   giveable: Seconds;
   /** Everything on the viewer's clock, live - what a revive is paid from. */
@@ -23,6 +25,7 @@ interface Props {
 
 export function People({
   friends,
+  handle,
   giveable,
   spendable,
   anonymous,
@@ -45,7 +48,9 @@ export function People({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const trimmed = nickname.trim();
+    // The field already draws the "@", so one typed or pasted in front of the
+    // name is the same name, not part of it.
+    const trimmed = nickname.trim().replace(/^@/, "");
     if (trimmed.length === 0) return;
     onFollow(trimmed);
     setNickname("");
@@ -78,6 +83,8 @@ export function People({
           Follow
         </button>
       </form>
+
+      <YourNickname handle={handle} />
 
       {anonymous ? (
         <button
@@ -138,6 +145,46 @@ export function People({
         onOpen={(friend) => onOpenProfile(friend.profile.id)}
         trailingTo={trailingTo}
       />
+    </div>
+  );
+}
+
+/**
+ * Your own nickname, where the follow field is.
+ *
+ * A follow only becomes a connection when it goes both ways, so every
+ * connection needs the other person to type your nickname exactly - and until
+ * this, the only place it appeared was the Account tab. Copied bare, without
+ * the "@", because that is what the follow field takes.
+ */
+function YourNickname({ handle }: { handle: string }) {
+  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(handle);
+      setCopied("done");
+    } catch {
+      setCopied("failed");
+    }
+    setTimeout(() => setCopied("idle"), 1600);
+  };
+
+  return (
+    <div className="flex items-center gap-3 px-5 pt-3">
+      <p className="min-w-0 flex-1 truncate text-footnote text-label-2">
+        {/* select-all, so a webview that refuses the clipboard still leaves a
+            one-tap way to copy it by hand. */}
+        Friends follow you as <span className="text-label select-all">@{handle}</span>
+      </p>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-footnote font-semibold transition-transform active:scale-95"
+        style={{ color: "var(--color-run)", ["--tint" as string]: "var(--color-run)" }}
+      >
+        {copied === "done" ? "Copied" : copied === "failed" ? "Couldn't copy" : "Copy"}
+      </button>
     </div>
   );
 }

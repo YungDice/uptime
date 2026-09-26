@@ -32,6 +32,8 @@ export interface Session {
   announce(tone: Notice["tone"], text: string): void;
   run(action: () => Promise<ActionResult>): Promise<boolean>;
   reload(): Promise<void>;
+  /** Try the launch again, after it failed before there was a snapshot. */
+  retry(): void;
 }
 
 /**
@@ -66,6 +68,8 @@ export function useSession(store: UptimeStore, handle: string): Session {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  /** Bumped to run the launch again. See `retry`. */
+  const [attempt, setAttempt] = useState(0);
   const noticeId = useRef(0);
   /** Wall-clock ms of the last snapshot applied. See REFRESH_MIN_INTERVAL_MS. */
   const syncedAt = useRef(0);
@@ -105,6 +109,9 @@ export function useSession(store: UptimeStore, handle: string): Session {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      // Cleared first, so a retry puts the launch screen back rather than
+      // leaving the old error up while it tries.
+      setError(null);
       try {
         const next = await store.start(handle);
         if (!cancelled) {
@@ -120,7 +127,20 @@ export function useSession(store: UptimeStore, handle: string): Session {
     return () => {
       cancelled = true;
     };
-  }, [apply, handle, store]);
+  }, [apply, handle, store, attempt]);
+
+  // A launch that failed with nothing on screen tries again by itself when the
+  // network comes back: the desktop app can start with the machine, before
+  // the Wi-Fi has, and otherwise sat on the error until it was restarted.
+  const stranded = error !== null && snapshot === null;
+  useEffect(() => {
+    if (!stranded) return;
+    const onOnline = () => setAttempt((n) => n + 1);
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [stranded]);
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   // Reopening the app is itself a sign of life, so refresh on return - unless
   // the last reading is only seconds old, in which case nothing a refresh could
@@ -207,5 +227,6 @@ export function useSession(store: UptimeStore, handle: string): Session {
     announce: say,
     run,
     reload,
+    retry,
   };
 }

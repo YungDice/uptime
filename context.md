@@ -28,7 +28,7 @@ a year of the server being asleep.
 |---|---|
 | `src/core/` | Pure rules. No I/O, no React, no imports outside `core`. |
 | `src/data/` | One store interface, two adapters that must behave identically. |
-| `src/components/` | Presentational. `Shell`, `TabBar`, `List`, `StopwatchFace`, `FriendList`, `Sheet`, `SendSheet`, `ConfirmSheet`, `LiveTime`, `Medal`, `Podium`, `Avatar`, `ReminderOffer`. |
+| `src/components/` | Presentational. `Shell`, `TabBar`, `List`, `StopwatchFace`, `FriendList`, `Sheet`, `SendSheet`, `ConfirmSheet`, `LiveTime`, `Medal`, `Podium`, `Avatar`, `Activity`, `ReminderOffer` (not mounted - see below). |
 | `src/screens/` | The four tabs: `Home`, `People`, `Boards`, `Account` — plus `Profile`, which is somebody else's page and opens as a sheet over any of them. |
 | `src/hooks/` | `useSession` (owns store + clock + notices + the pulse), `useNow` / `useFractionalNow`. |
 | `src/notifications/` | Client half of the check-in prompt. |
@@ -268,13 +268,30 @@ guesses.
 - **Follow requests** are not a new schema. `friends` always contained people
   who follow you and are not followed back; the snapshot now says which way
   each follow points (`iFollow` / `followsMe`) and People splits them out.
+- **Recent and Past runs** on Home are not new schema either: they read
+  `recentGifts` and `me.history`, which every snapshot already carried and
+  nothing rendered. `activityFor` in `src/core/activity.ts` turns the ledger
+  into your side of it. A revive's gift records its *cost*; what it brought
+  back is found by matching the revived run's `revivedAt` to the gift's
+  `createdAt`, which both adapters stamp with the same instant - keep it that
+  way if you touch `uptime_revive`. Both fields arrive as null, not absent,
+  from SQL, so test them loosely.
+- **The launch notice** ("While you were away, ...") counts incoming items
+  newer than `windowAnchor`. In `npm run dev`, React's StrictMode runs the
+  launch twice, the first `refresh()` touches `last_seen`, and the second
+  reads that as the anchor - so in dev only items stamped after page load
+  count as new. Production launches once.
+- **`ReminderOffer` is deliberately unmounted.** Nothing delivers a reminder:
+  `registerDevice` and `showLocalReminder` have no callers. An offer that takes
+  the permission and then stays silent is worse than none. Remount it on Home
+  when either one sends something.
 
 ## Running it
 
 ```bash
 npm install
 npm run dev            # browser, http://localhost:1420
-npm test               # 162 tests, ~0.5s
+npm test               # 182 tests, ~0.5s
 npm run typecheck      # app, plus vite.config.ts against tsconfig.node.json
 npm run db:bundle      # regenerate supabase/deploy.sql after editing a migration
 npm run desktop:dev    # same app in a Tauri window

@@ -19,7 +19,7 @@ lets a phone's stopwatch survive a restart.
 npm install
 npm run dev          # browser, http://localhost:1420
 npm run desktop:dev  # the same app in a Tauri window
-npm test             # 162 tests over the domain rules, the store, the updater and the Stripe webhook
+npm test             # 182 tests over the domain rules, the store, the updater and the Stripe webhook
 ```
 
 With no Supabase project configured the app runs against browser storage with
@@ -77,9 +77,10 @@ ever fires on someone who has genuinely gone.
 sign of life, the window bar as originally specified could only ever read
 full — the act of looking at it refills it. So the bar is measured from
 `windowAnchor`: where the window stood *before this visit*. It now says
-something true ("you last showed up 58 days ago, 2 days left") and the offer to
-turn on reminders fires at the one moment a user has a reason to accept it.
-An explicit check-in is what refills it.
+something true ("you last showed up 58 days ago, 2 days left"), and it is the
+line "while you were away" is drawn from: gifts and revives newer than it are
+announced on launch and marked New under Recent. An explicit check-in is what
+refills it.
 
 For the same reason the `lapsed` *status* is nearly unobservable — every open
 sweeps it — so the reset message is driven by the last closed run instead.

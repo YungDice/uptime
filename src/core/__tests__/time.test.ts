@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DAY, HOUR, MINUTE } from "../constants";
 import {
   SyncedClock,
+  formatAgo,
+  formatDate,
   formatDuration,
   formatElapsed,
   formatRemaining,
@@ -39,6 +41,26 @@ describe("formatRemaining", () => {
     expect(formatRemaining(23 * DAY)).toBe("23 days left");
     expect(formatRemaining(DAY)).toBe("1 day left");
     expect(formatRemaining(0)).toBe("window closed");
+  });
+});
+
+describe("formatAgo", () => {
+  const now = 1_700_000_000;
+
+  it("counts back in the coarsest unit that fits", () => {
+    expect(formatAgo(now - 20, now)).toBe("just now");
+    expect(formatAgo(now - 12 * MINUTE, now)).toBe("12 min ago");
+    expect(formatAgo(now - 3 * HOUR, now)).toBe("3 hr ago");
+    expect(formatAgo(now - DAY, now)).toBe("1 day ago");
+    expect(formatAgo(now - 30 * DAY, now)).toBe("30 days ago");
+  });
+
+  it("switches to the date after a month", () => {
+    expect(formatAgo(now - 31 * DAY, now)).toBe(formatDate(now - 31 * DAY));
+  });
+
+  it("reads a moment in the future, from clock skew, as just now", () => {
+    expect(formatAgo(now + 5, now)).toBe("just now");
   });
 });
 

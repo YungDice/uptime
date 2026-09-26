@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   CHECK_IN_WINDOW,
   DAY,
@@ -9,12 +10,13 @@ import {
   statusOf,
   type Clock,
   type Seconds,
+  type StreakRun,
 } from "@/core";
 import { isRevivable, liveGiveable, liveSendableNow, type Snapshot } from "@/data/store";
 import { StopwatchFace } from "@/components/StopwatchFace";
 import { Capsule, Row, Section } from "@/components/List";
 import { LiveTime } from "@/components/LiveTime";
-import { ReminderOffer } from "@/components/ReminderOffer";
+import { RecentActivity } from "@/components/Activity";
 
 interface Props {
   snapshot: Snapshot;
@@ -29,6 +31,7 @@ interface Props {
   onSend(): void;
   onRevive(): void;
   onOpenAccount(): void;
+  onOpenProfile(userId: string): void;
   /** Start buying the whole-clock upgrade. Absent where it is not on offer. */
   onUnlock?: () => void;
 }
@@ -51,6 +54,7 @@ export function Home({
   onSend,
   onRevive,
   onOpenAccount,
+  onOpenProfile,
   onUnlock,
 }: Props) {
   const { me } = snapshot;
@@ -113,11 +117,9 @@ export function Home({
       {!live && snapshot.lastRun?.reason === "lapsed" ? (
         <p className="px-5 pt-4 text-footnote text-label-2">
           Your streak reset - the check-in window ran out. It ran{" "}
-          {Math.floor(snapshot.lastRun.length / DAY)} days and is kept in your history.
+          {Math.floor(snapshot.lastRun.length / DAY)} days and is kept under Past runs.
         </p>
       ) : null}
-
-      {live ? <ReminderOffer elapsed={status.elapsed} windowRemaining={windowLeft} /> : null}
 
       <GivePanel
         giveable={giveable}
@@ -131,6 +133,8 @@ export function Home({
         onOpenAccount={onOpenAccount}
         {...(onUnlock && !anonymous ? { onUnlock } : {})}
       />
+
+      <RecentActivity snapshot={snapshot} now={now} onOpen={onOpenProfile} />
 
       <Section title="Run">
         <Row
@@ -161,8 +165,63 @@ export function Home({
         <Row label="Given away" value={formatDuration(snapshot.totalSent)} />
         <Row label="Received" value={formatDuration(snapshot.totalReceived)} />
       </Section>
+
+      <PastRuns history={me.history} />
     </div>
   );
+}
+
+/**
+ * Every run that ended, newest first.
+ *
+ * The record is never edited - a lapse, a stop and a rescue all leave the run
+ * on file, and the reset message has always said so. Until this there was
+ * nowhere to see it.
+ */
+function PastRuns({ history }: { history: readonly StreakRun[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (history.length === 0) return null;
+
+  const runs = [...history].sort((a, b) => b.endedAt - a.endedAt);
+  const shown = expanded ? runs : runs.slice(0, 4);
+
+  return (
+    <Section title="Past runs">
+      {shown.map((run, index) => {
+        const end = howItEnded(run);
+        const days = Math.floor(run.length / DAY);
+        return (
+          <Row
+            key={`${run.endedAt}-${index}`}
+            label={days === 0 ? formatDuration(run.length) : `${days} ${days === 1 ? "day" : "days"}`}
+            sub={`${formatDate(run.startedAt)} - ${formatDate(run.endedAt)}`}
+            value={end.label}
+            tone={end.tone}
+          />
+        );
+      })}
+      {runs.length > shown.length ? (
+        <Row
+          label={<span className="text-run">Show all {runs.length}</span>}
+          onClick={() => setExpanded(true)}
+        />
+      ) : null}
+    </Section>
+  );
+}
+
+function howItEnded(run: StreakRun): { label: string; tone: "default" | "run" | "lapse" } {
+  // Loose on purpose: the SQL snapshot sends null for a run nobody revived,
+  // the local one leaves the key off.
+  if (run.revivedAt != null) return { label: "Revived", tone: "run" };
+  switch (run.reason) {
+    case "lapsed":
+      return { label: "Lapsed", tone: "lapse" };
+    case "voluntary":
+      return { label: "Stopped", tone: "default" };
+    case "reset":
+      return { label: "Reset", tone: "default" };
+  }
 }
 
 /**

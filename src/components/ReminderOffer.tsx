@@ -11,6 +11,13 @@ import {
  * Offered only when it is actually useful: a streak worth protecting, a window
  * that nearly ran out, and notifications not already on. Asking on first launch
  * is how an app gets denied permanently.
+ *
+ * Not mounted anywhere, on purpose. Nothing delivers a reminder yet: no push
+ * token is ever registered (`registerDevice` has no caller) and
+ * `showLocalReminder` is never called. An offer that takes the permission and
+ * then stays silent is worse than none, because the user who accepts it is
+ * the one who stops watching the window. Put it back on Home once one of the
+ * two actually sends something.
  */
 export function ReminderOffer({
   elapsed,
