@@ -6,9 +6,30 @@
 //! platform notification services behind the check-in prompt, and on desktop,
 //! replacing itself with a newer build.
 
+#[cfg(desktop)]
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_notification::init());
+    let builder = tauri::Builder::default();
+
+    // One window, however many times it is launched. Without this, clicking
+    // the Start menu entry for an app already open behind other windows
+    // opened a second copy - two clocks polling side by side, and a second
+    // process holding the exe the updater needs to replace. A second launch
+    // now brings the first one forward instead. Registered before anything
+    // else, as the plugin requires, so the second copy exits before it has
+    // started anything of its own.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+
+    let builder = builder.plugin(tauri_plugin_notification::init());
 
     // The desktop build updates itself from the signed feed named in
     // tauri.conf.json; the phones get theirs from the stores.
@@ -25,9 +46,54 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init());
 
     builder
+        .setup(|_app| {
+            #[cfg(desktop)]
+            if let Some(window) = _app.get_webview_window("main") {
+                fit_to_screen(&window);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![notification_permission])
         .run(tauri::generate_context!())
         .expect("error while running Uptime");
+}
+
+/// Keep the window inside the screen it opens on, and centred on it.
+///
+/// The window is a phone-shaped 900 tall, and the most common laptop setups
+/// are not that tall once scaled: 1920x1080 at 125% leaves 816 above the
+/// taskbar, and 1366x768 at 100% leaves 720. The window
+/// opened taller than the space it had, so its bottom edge - the tab bar, the
+/// only way between the four screens - sat under the taskbar or off the
+/// screen entirely, on first launch, for exactly the people most likely to
+/// install a desktop app on a laptop.
+///
+/// Measured against the work area, not the monitor, because the taskbar is
+/// what was covering it. Physical pixels throughout, so no scale factor is
+/// applied twice.
+#[cfg(desktop)]
+fn fit_to_screen<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else { return };
+    let area = *monitor.work_area();
+    let (Ok(outer), Ok(inner)) = (window.outer_size(), window.inner_size()) else {
+        return;
+    };
+
+    // The title bar and borders, which the configured size does not include.
+    let frame = outer.height.saturating_sub(inner.height);
+    let height = inner.height.min(area.size.height.saturating_sub(frame));
+    if height < inner.height {
+        let _ = window.set_size(tauri::PhysicalSize::new(inner.width, height));
+    }
+
+    let x = area.position.x + (area.size.width as i32 - outer.width as i32) / 2;
+    let y = area.position.y + (area.size.height as i32 - (height + frame) as i32) / 2;
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y.max(area.position.y)));
 }
 
 /// Whether this install can show the "still here?" prompt.

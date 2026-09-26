@@ -287,7 +287,7 @@ export function App() {
           onOpenAccount={() => setTab("account")}
           now={session.now}
           trailingTo={trailingTo}
-          onFollow={(handle) => void session.run(() => store.follow(handle))}
+          onFollow={(handle) => session.run(() => store.follow(handle))}
           onSend={setSending}
           onRevive={askRevive}
           onOpenProfile={openProfile}
@@ -298,6 +298,7 @@ export function App() {
         <Boards
           store={store}
           me={snapshot.me}
+          now={session.now}
           anonymous={snapshot.account.isAnonymous}
           onOpenAccount={() => setTab("account")}
           onOpenProfile={openProfile}

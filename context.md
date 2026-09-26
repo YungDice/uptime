@@ -276,6 +276,22 @@ guesses.
   `createdAt`, which both adapters stamp with the same instant - keep it that
   way if you touch `uptime_revive`. Both fields arrive as null, not absent,
   from SQL, so test them loosely.
+- **The desktop window fits itself to the screen at launch** (`fit_to_screen`
+  in `src-tauri/src/lib.rs`). The configured 480x900 is taller than the space
+  above the taskbar on most scaled laptop screens, and the tab bar - the only
+  way between screens - opened underneath it. It shrinks to the work area and
+  centres; `minHeight` is 520 so the shrink is not refused on small screens.
+- **One instance on desktop** (`tauri-plugin-single-instance`, registered first).
+  A second launch focuses the first window instead of opening another copy.
+- **Two boards count only accounts 14 days old** - Most given and Rescues
+  (`created_at <= aged` in `uptime_board_top`). `BOARDS[].agedCredit` names
+  them so the Boards tab can say so; before it did, both boards read "Nothing
+  on this board yet" to anyone who had just given time, which at launch is
+  everyone.
+- **Network failures are said in the app's words** (`unreachable` and
+  `OFFLINE` in `src/data/supabase.ts`). supabase-js never throws on a dead
+  network; it resolves with the engine's own "TypeError: Failed to fetch",
+  which the app used to show verbatim.
 - **The launch notice** ("While you were away, ...") counts incoming items
   newer than `windowAnchor`. In `npm run dev`, React's StrictMode runs the
   launch twice, the first `refresh()` touches `last_seen`, and the second
@@ -291,7 +307,7 @@ guesses.
 ```bash
 npm install
 npm run dev            # browser, http://localhost:1420
-npm test               # 182 tests, ~0.5s
+npm test               # 192 tests, ~0.5s
 npm run typecheck      # app, plus vite.config.ts against tsconfig.node.json
 npm run db:bundle      # regenerate supabase/deploy.sql after editing a migration
 npm run desktop:dev    # same app in a Tauri window
@@ -371,8 +387,13 @@ in the repo can change this; it needs a Mac.
   pushing history entries in the frontend is what makes back behave — see
   `useBackStack` in `src/hooks/useBackStack.ts`.
 - **Android IPC is a `@JavascriptInterface` postMessage bridge**, not a network
-  request (`wry`'s `Ipc.kt`). So the CSP in `tauri.conf.json` does *not* need an
-  `ipc:` entry in `connect-src` for mobile. Do not add one speculatively.
+  request (`wry`'s `Ipc.kt`), so mobile never needed an `ipc:` entry in
+  `connect-src`. **Windows does.** Its IPC is a fetch to `http://ipc.localhost`,
+  and without `ipc: http://ipc.localhost` in `connect-src` every native call
+  (the updater, the opener, notifications) was refused by the CSP, logged two
+  console errors, and only then fell back to postMessage. It worked, slowly
+  and noisily, which is why nobody noticed. The entry is there now; it is
+  harmless on mobile.
 - **The capability in `src-tauri/capabilities/default.json` already applies on
   mobile.** Its `platforms` field is absent, which the schema defines as "all
   targets", and the mobile webview label is `main` just like the desktop
@@ -445,7 +466,7 @@ tools installed:
   The README flags this as the next thing worth designing.
 - **The name `Uptime`** is a working title, baked into the bundle identifier
   `com.yungdice.uptime`.
-- **No component tests.** The 162 tests cover `src/core`, the store, the updater and the
+- **No component tests.** The 192 tests cover `src/core`, the store, the updater and the
   Stripe helper only;
   there is no DOM test environment installed (no jsdom, no Testing Library), so
   `useBackStack` and the screens are verified by driving a browser rather than

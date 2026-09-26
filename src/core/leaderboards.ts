@@ -22,13 +22,32 @@ export interface BoardEntry {
   unit: "seconds" | "count";
 }
 
-export const BOARDS: { id: BoardId; label: string; blurb: string }[] = [
+export const BOARDS: {
+  id: BoardId;
+  label: string;
+  blurb: string;
+  /**
+   * What this board counts, when it only counts accounts old enough - see
+   * `countsTowardBoards`. Named so the board can say whose it is not yet.
+   */
+  agedCredit?: "gifts" | "rescues";
+}[] = [
   { id: "current-streak", label: "Running now", blurb: "Longest streak still alive" },
   { id: "longest-ever", label: "Hall of fame", blurb: "Longest streak ever achieved" },
   { id: "lifetime-total", label: "Career total", blurb: "Most time kept across every run" },
-  { id: "most-donated", label: "Most given", blurb: "Most time donated to others" },
+  {
+    id: "most-donated",
+    label: "Most given",
+    blurb: "Most time donated to others",
+    agedCredit: "gifts",
+  },
   { id: "most-received", label: "Most received", blurb: "Most time received as gifts" },
-  { id: "most-revives", label: "Rescues", blurb: "Most broken streaks revived" },
+  {
+    id: "most-revives",
+    label: "Rescues",
+    blurb: "Most broken streaks revived",
+    agedCredit: "rescues",
+  },
 ];
 
 /**
@@ -37,8 +56,13 @@ export const BOARDS: { id: BoardId; label: string; blurb: string }[] = [
  * A fresh signup can play immediately; it just cannot move the boards until it
  * has some history. Sockpuppet farms are cheap to create and expensive to age.
  */
-export function countsTowardBoards(user: UserState, now: Seconds): boolean {
+export function countsTowardBoards(user: Pick<UserState, "createdAt">, now: Seconds): boolean {
   return now - user.createdAt >= MIN_ACCOUNT_AGE_FOR_LEADERBOARD_CREDIT;
+}
+
+/** The moment an account's gifts and rescues start counting on the boards. */
+export function boardCreditFrom(user: Pick<UserState, "createdAt">): Seconds {
+  return user.createdAt + MIN_ACCOUNT_AGE_FOR_LEADERBOARD_CREDIT;
 }
 
 /**

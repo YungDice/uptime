@@ -19,7 +19,7 @@ lets a phone's stopwatch survive a restart.
 npm install
 npm run dev          # browser, http://localhost:1420
 npm run desktop:dev  # the same app in a Tauri window
-npm test             # 182 tests over the domain rules, the store, the updater and the Stripe webhook
+npm test             # 192 tests over the domain rules, the store, the updater and the Stripe webhook
 ```
 
 With no Supabase project configured the app runs against browser storage with

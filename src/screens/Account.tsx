@@ -169,7 +169,9 @@ function Anonymous({ snapshot, onSignUp, onSignIn }: Props) {
           />
         ) : null}
 
-        <div className="mt-3">
+        {/* flex, because `wide` is flex-1 and means nothing without a flex
+            parent - the button shrank to a pill beside a full-width form. */}
+        <div className="mt-3 flex">
           {/* type="submit" is load-bearing: Capsule defaults to a plain button,
               and a form whose only control is one cannot be submitted at all -
               with three fields the browser suppresses Enter as well. */}

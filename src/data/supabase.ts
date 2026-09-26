@@ -74,10 +74,12 @@ export class SupabaseStore implements UptimeStore {
       if (error) {
         throw new Error(
           captchaRefusal(error) ??
-            (/anonymous/i.test(error.message)
-              ? "Anonymous sign-ins are disabled for this Supabase project. " +
-                "Turn them on under Authentication - Sign In / Providers."
-              : error.message),
+            (unreachable(error)
+              ? OFFLINE
+              : /anonymous/i.test(error.message)
+                ? "Anonymous sign-ins are disabled for this Supabase project. " +
+                  "Turn them on under Authentication - Sign In / Providers."
+                : error.message),
         );
       }
     }
@@ -85,7 +87,12 @@ export class SupabaseStore implements UptimeStore {
     // caller's preference alone - every first run would ask for the same one
     // and the second user would collide. Derive it from the authenticated id,
     // which is unique by construction; `handle` only seeds the display name.
-    const { data: current } = await this.client.auth.getUser();
+    //
+    // This is a network read, so it is also where a launch made before the
+    // Wi-Fi came up fails. Without the check, an empty answer read as an
+    // account with no id and blamed the account.
+    const { data: current, error: unread } = await this.client.auth.getUser();
+    if (unread && unreachable(unread)) throw new Error(OFFLINE);
     const uid = current.user?.id;
     if (!uid) throw new Error("Signed in but no user id came back.");
 
@@ -132,7 +139,7 @@ export class SupabaseStore implements UptimeStore {
     if (error?.code === "same_password") {
       ({ data, error } = await this.client.auth.updateUser({ email }));
     }
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: authMessage(error) };
 
     const named = await this.action("uptime_set_handle", { p_handle: handle });
     if (!named.ok) return named;
@@ -184,14 +191,14 @@ export class SupabaseStore implements UptimeStore {
           };
         }
       }
-      return { ok: false, message: error.message };
+      return { ok: false, message: authMessage(error) };
     }
     return { ok: true, snapshot: await this.refresh(), message: "Signed in." };
   }
 
   async signOut(): Promise<ActionResult> {
     const { error } = await this.client.auth.signOut();
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: authMessage(error) };
     // Signing out drops to a fresh anonymous account rather than to a dead
     // screen: the app has to be usable without one, so that is where it lands.
     const snapshot = await this.start("you");
@@ -235,7 +242,7 @@ export class SupabaseStore implements UptimeStore {
     const { error } = await this.client.storage
       .from("avatars")
       .upload(path, image, { contentType: image.type, upsert: false });
-    if (error) return { ok: false, message: error.message };
+    if (error) return { ok: false, message: authMessage(error) };
 
     const { data: published } = this.client.storage.from("avatars").getPublicUrl(path);
     const result = await this.action("uptime_set_avatar", { p_url: published.publicUrl });
@@ -433,6 +440,30 @@ function captchaRefusal(error: { code?: string | undefined; message: string }): 
     : "Couldn't confirm you're a person. Check your connection and try again.";
 }
 
+/** Said whenever a request never reached the server. */
+const OFFLINE = "Couldn't reach Uptime. Check your connection and try again.";
+
+/**
+ * Whether a supabase-js error is a request that never arrived.
+ *
+ * None of the clients throw on a dead network. postgrest-js resolves with the
+ * rejected fetch's own `${name}: ${message}`, auth-js wraps it in an
+ * AuthRetryableFetchError, and storage-js passes the message through - so the
+ * only thing they share is each engine's wording for a failed fetch, and the
+ * app used to show that wording as it was: "TypeError: Failed to fetch".
+ */
+function unreachable(error: { name?: string; message: string }): boolean {
+  return (
+    error.name === "AuthRetryableFetchError" ||
+    /failed to fetch|load failed|networkerror|network request failed/i.test(error.message)
+  );
+}
+
+/** An auth or storage error, in its own words unless it never left the device. */
+function authMessage(error: { name?: string; message: string }): string {
+  return unreachable(error) ? OFFLINE : error.message;
+}
+
 /**
  * Turn PostgREST's codes into something a person can act on.
  *
@@ -441,6 +472,7 @@ function captchaRefusal(error: { code?: string | undefined; message: string }): 
  * function in the schema cache") sends people looking in the wrong place.
  */
 function explain(error: { code?: string; message: string }): string {
+  if (unreachable(error)) return OFFLINE;
   if (error.code === "PGRST202" || error.code === "PGRST205") {
     // Naming what was missing distinguishes an empty project from one a
     // migration behind - the fix is the same, the diagnosis is not.

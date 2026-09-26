@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { BOARDS, formatDuration, type BoardEntry, type BoardId } from "@/core";
+import {
+  BOARDS,
+  MIN_ACCOUNT_AGE_FOR_LEADERBOARD_CREDIT,
+  DAY,
+  boardCreditFrom,
+  countsTowardBoards,
+  formatDate,
+  formatDuration,
+  type BoardEntry,
+  type BoardId,
+  type Seconds,
+} from "@/core";
 import type { UserProfile } from "@/core/types";
 import type { RankInfo, UptimeStore } from "@/data/store";
 import { Avatar } from "@/components/Avatar";
@@ -19,12 +30,15 @@ import { Podium } from "@/components/Podium";
 export function Boards({
   store,
   me,
+  now,
   anonymous,
   onOpenAccount,
   onOpenProfile,
 }: {
   store: UptimeStore;
   me: UserProfile;
+  /** Whole seconds, for whether this account is old enough to count yet. */
+  now: Seconds;
   anonymous: boolean;
   onOpenAccount(): void;
   onOpenProfile(userId: string): void;
@@ -88,6 +102,20 @@ export function Boards({
       </div>
 
       {meta ? <p className="px-5 pt-3 text-footnote text-label-2">{meta.blurb}</p> : null}
+
+      {/* Two boards leave out accounts younger than two weeks, and nothing
+          said so: someone who had just given away an afternoon found the
+          board telling them nobody had given anything. At launch every
+          account is that young, so both boards read as broken to everyone. */}
+      {meta?.agedCredit !== undefined ? (
+        <p className="px-5 pt-1 text-footnote text-label-3">
+          {!anonymous && !countsTowardBoards(me, now)
+            ? `Your ${meta.agedCredit} count here from ${formatDate(boardCreditFrom(me))}. `
+            : ""}
+          Accounts join this board once they are{" "}
+          {Math.round(MIN_ACCOUNT_AGE_FOR_LEADERBOARD_CREDIT / DAY)} days old.
+        </p>
+      ) : null}
 
       {anonymous ? (
         <button

@@ -17,7 +17,8 @@ interface Props {
   onOpenAccount(): void;
   now: Seconds;
   trailingTo: string | null;
-  onFollow(handle: string): void;
+  /** Resolves true when the follow went through. */
+  onFollow(handle: string): Promise<boolean>;
   onSend(friend: FriendView): void;
   onRevive(friend: FriendView): void;
   onOpenProfile(userId: string): void;
@@ -46,19 +47,21 @@ export function People({
   const requests = friends.filter((f) => f.followsMe && !f.iFollow);
   const others = friends.filter((f) => !(f.followsMe && !f.iFollow));
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     // The field already draws the "@", so one typed or pasted in front of the
     // name is the same name, not part of it.
     const trimmed = nickname.trim().replace(/^@/, "");
     if (trimmed.length === 0) return;
-    onFollow(trimmed);
-    setNickname("");
+    // Cleared only once it worked. The usual refusal is "No account with that
+    // nickname" - a typo - and emptying the field made the fix a whole name
+    // retyped from memory rather than one character.
+    if (await onFollow(trimmed)) setNickname("");
   };
 
   return (
     <div className="pb-4">
-      <form onSubmit={submit} className="flex gap-2 px-5 pt-3">
+      <form onSubmit={(event) => void submit(event)} className="flex gap-2 px-5 pt-3">
         <div className="surface relative flex min-w-0 flex-1 items-center rounded-xl">
           <span aria-hidden="true" className="pl-3.5 text-body text-label-3">
             @
@@ -121,7 +124,7 @@ export function People({
               </button>
               <button
                 type="button"
-                onClick={() => onFollow(friend.profile.handle)}
+                onClick={() => void onFollow(friend.profile.handle)}
                 className="surface-tint shrink-0 rounded-full px-3.5 py-1.5 text-footnote font-semibold transition-transform active:scale-95"
                 style={{ color: "var(--color-run)", ["--tint" as string]: "var(--color-run)" }}
               >
