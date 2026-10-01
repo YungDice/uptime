@@ -1,0 +1,187 @@
+name: Android
+
+# Builds the Android App Bundle on a GitHub-hosted Linux runner, signs it with
+# the upload key, and optionally hands it to Google Play as a draft release.
+# The runner image already carries the Android SDK and NDK, so nothing Android
+# needs installing on the Windows machine (context.md, "What blocks Android
+# here").
+#
+# Google Play re-signs what it serves with its own app signing key (Play App
+# Signing); the key used here is only the upload key, which Google can reset
+# if it is ever lost.
+#
+# Google refuses API uploads until the app has had one bundle uploaded by hand
+# in Play Console, so the first run builds only (Upload unticked) and the AAB
+# is taken from the run's artifacts. One-time setup is in README.md, under
+# "Google Play".
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload to Google Play as a draft (off builds the AAB into the run's artifacts only)
+        type: boolean
+        default: false
+      track:
+        description: Play track to upload to
+        type: choice
+        options: [internal, alpha, beta, production]
+        default: internal
+
+concurrency:
+  group: android
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the one-time setup
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          UPLOAD: ${{ inputs.upload }}
+        run: |
+          missing=0
+          [ -n "$KEYSTORE" ] || { echo "::error::Add the ANDROID_UPLOAD_KEYSTORE secret - see README.md, Google Play."; missing=1; }
+          [ -n "$PASSWORD" ] || { echo "::error::Add the ANDROID_UPLOAD_KEYSTORE_PASSWORD secret - see README.md, Google Play."; missing=1; }
+          if [ "$UPLOAD" = "true" ] && [ -z "$SERVICE_ACCOUNT" ]; then
+            echo "::error::Add the GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret, or untick Upload - see README.md, Google Play."; missing=1
+          fi
+          # A phone build on browser storage would ship the demo cast to
+          # reviewers, so this is an error here, not a warning.
+          [ -n "$SUPABASE_URL" ] || { echo "::error::Add the VITE_SUPABASE_URL variable - see README.md, Releasing the desktop app."; missing=1; }
+          exit $missing
+
+      # Android Gradle Plugin 8 needs JDK 17 or newer.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Tauri reads NDK_HOME. The image's newest NDK (r28 or later) links
+      # 64-bit libraries with 16 KB page alignment by default, which Play
+      # requires of every app targeting Android 15 and up.
+      - name: Point Tauri at the NDK
+        run: |
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          echo "NDK: $ANDROID_NDK_LATEST_HOME"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - run: npm test
+
+      # versionName - the version people see - stays package.json's.
+      # versionCode has to rise with every upload to Play, so it is the run
+      # number rather than Tauri's default (derived from the version, which
+      # would repeat on a rebuild). A re-run keeps its number; Play rejects a
+      # repeated code, so re-run only a run that never uploaded.
+      - name: Number this build
+        env:
+          BUILD: ${{ github.run_number }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const path = "src-tauri/tauri.conf.json";
+            const config = JSON.parse(fs.readFileSync(path, "utf8"));
+            config.bundle.android.versionCode = Number(process.env.BUILD);
+            fs.writeFileSync(path, JSON.stringify(config, null, 2));
+          '
+          echo "Uptime $(node -p "require('./package.json').version") ($BUILD)"
+
+      # src-tauri/gen/ is gitignored, so the Gradle project is generated fresh
+      # on every run. Anything it needs beyond Tauri's template belongs in
+      # tauri.conf.json, never in gen/android.
+      - name: Generate the Android project
+        run: npm run tauri -- android init --ci
+
+      # Unsigned: the Gradle project has no signing config (it is regenerated
+      # every run), so the bundle is signed in the next step instead.
+      - name: Build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+        run: npm run tauri -- android build --ci --aab
+
+      - name: Find the AAB
+        run: |
+          aab="$(find src-tauri/gen/android/app/build/outputs/bundle -name '*.aab' | head -n 1)"
+          [ -n "$aab" ] || { echo "::error::No AAB under src-tauri/gen/android/app/build/outputs/bundle/"; exit 1; }
+          echo "AAB=$aab" >> "$GITHUB_ENV"
+          ls -l "$aab"
+
+      # Play rejects a bundle whose 64-bit native libraries are not 16 KB
+      # aligned, but only after the upload. Failing here says so sooner.
+      - name: Check 16 KB page alignment
+        run: |
+          readelf="$(ls "$NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -n 1)"
+          dir="$(mktemp -d)"
+          unzip -q "$AAB" 'base/lib/*' -d "$dir"
+          bad=0
+          for so in "$dir"/base/lib/arm64-v8a/*.so "$dir"/base/lib/x86_64/*.so; do
+            [ -f "$so" ] || continue
+            for align in $("$readelf" -lW "$so" | awk '$1 == "LOAD" { print $NF }'); do
+              if [ $((align)) -lt 16384 ]; then
+                echo "::error::$(basename "$so") has a LOAD segment aligned to $align, below 16 KB"
+                bad=1
+              fi
+            done
+          done
+          exit $bad
+
+      # jarsigner reads the password from the environment (`:env`), so it
+      # never appears on a command line. The keystore is PKCS12, where the key
+      # and the store share one password.
+      - name: Sign with the upload key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS || 'upload' }}
+        run: |
+          keystore="$RUNNER_TEMP/upload.jks"
+          printf '%s' "$KEYSTORE" | base64 --decode > "$keystore"
+          signed="$RUNNER_TEMP/uptime-${{ github.run_number }}.aab"
+          jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore "$keystore" -storepass:env STORE_PASSWORD -keypass:env STORE_PASSWORD \
+            -signedjar "$signed" "$AAB" "$KEY_ALIAS"
+          rm -f "$keystore"
+          jarsigner -verify "$signed" > /dev/null
+          echo "AAB=$signed" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uptime-${{ github.run_number }}-android
+          path: ${{ env.AAB }}
+
+      # A draft release on the chosen track: nothing reaches anyone until it
+      # is rolled out in Play Console -> the app -> Test and release.
+      - name: Upload to Google Play
+        if: inputs.upload
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.yungdice.uptime
+          releaseFiles: ${{ env.AAB }}
+          track: ${{ inputs.track }}
+          status: draft

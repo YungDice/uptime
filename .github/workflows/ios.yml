@@ -1,0 +1,141 @@
+name: iOS
+
+# Builds the iPhone app on a GitHub-hosted Mac, signs it, and uploads it to App
+# Store Connect, where it turns up in TestFlight and can be sent for review -
+# all from a browser. There is no Mac of our own: the Tauri CLI's `ios`
+# subcommand only exists in its macOS build (context.md, "What blocks iOS
+# here"), and this runner is the Mac it runs on.
+#
+# Signing needs nothing exported from a Mac's Keychain. With an App Store
+# Connect API key, Xcode on the runner fetches (or creates) the distribution
+# certificate and the provisioning profile itself.
+#
+# Manual for now: Actions -> iOS -> Run workflow. One-time setup is in
+# README.md, under "The App Store".
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload to App Store Connect (off builds the IPA into the run's artifacts only)
+        type: boolean
+        default: true
+
+concurrency:
+  group: ios
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    # macOS 26 ships Xcode 26, which App Store Connect has required for every
+    # upload since 2026-04-28.
+    runs-on: macos-26
+    env:
+      # Tauri's names: APPLE_API_KEY is the key's ID, not the key.
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_DEVELOPMENT_TEAM }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the one-time setup
+        env:
+          KEY: ${{ secrets.APPLE_API_KEY_P8 }}
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+        run: |
+          missing=0
+          [ -n "$APPLE_DEVELOPMENT_TEAM" ] || { echo "::error::Add the APPLE_DEVELOPMENT_TEAM variable - see README.md, The App Store."; missing=1; }
+          [ -n "$APPLE_API_KEY" ] || { echo "::error::Add the APPLE_API_KEY_ID secret - see README.md, The App Store."; missing=1; }
+          [ -n "$APPLE_API_ISSUER" ] || { echo "::error::Add the APPLE_API_ISSUER secret - see README.md, The App Store."; missing=1; }
+          [ -n "$KEY" ] || { echo "::error::Add the APPLE_API_KEY_P8 secret - see README.md, The App Store."; missing=1; }
+          # A phone build on browser storage would ship the demo cast to
+          # reviewers, so this is an error here, not a warning.
+          [ -n "$SUPABASE_URL" ] || { echo "::error::Add the VITE_SUPABASE_URL variable - see README.md, Releasing the desktop app."; missing=1; }
+          exit $missing
+
+      # Where both Tauri (APPLE_API_KEY_PATH) and altool (by file name, in
+      # ~/private_keys) look for it.
+      - name: Install the App Store Connect key
+        env:
+          KEY: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          mkdir -p ~/private_keys
+          key="$HOME/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s\n' "$KEY" > "$key"
+          chmod 600 "$key"
+          echo "APPLE_API_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - run: xcodebuild -version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - run: npm test
+
+      # CFBundleShortVersionString - the version people see - stays
+      # package.json's. CFBundleVersion has to rise with every upload of the
+      # same version, and may be at most three numbers, so it cannot be the
+      # version with a fourth one appended (which is what `--build-number`
+      # does). The run number rises on every run of this workflow; a re-run
+      # keeps its number, which is fine as long as the upload is the last step.
+      - name: Number this build
+        env:
+          BUILD: ${{ github.run_number }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const path = "src-tauri/tauri.conf.json";
+            const config = JSON.parse(fs.readFileSync(path, "utf8"));
+            config.bundle.iOS.bundleVersion = process.env.BUILD;
+            fs.writeFileSync(path, JSON.stringify(config, null, 2));
+          '
+          echo "Uptime $(node -p "require('./package.json').version") ($BUILD)"
+
+      # src-tauri/gen/ is gitignored, so the Xcode project is generated fresh
+      # on every run. Anything it needs beyond Tauri's template belongs in
+      # tauri.conf.json or src-tauri/Info.ios.plist, never in gen/apple.
+      - name: Generate the Xcode project
+        run: npm run tauri -- ios init --ci
+
+      - name: Build and sign
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+        run: npm run tauri -- ios build --ci --export-method app-store-connect
+
+      - name: Find the IPA
+        run: |
+          ipa="$(ls src-tauri/gen/apple/build/arm64/*.ipa | head -n 1)"
+          [ -n "$ipa" ] || { echo "::error::No IPA under src-tauri/gen/apple/build/arm64/"; exit 1; }
+          echo "IPA=$ipa" >> "$GITHUB_ENV"
+          ls -l "$ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uptime-${{ github.run_number }}-ios
+          path: ${{ env.IPA }}
+
+      # Lands in App Store Connect -> the app -> TestFlight after Apple has
+      # processed it, usually within half an hour. Submitting for review is
+      # done there, not here.
+      - name: Upload to App Store Connect
+        if: inputs.upload
+        run: |
+          xcrun altool --upload-app --type ios --file "$IPA" \
+            --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"

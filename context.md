@@ -385,7 +385,7 @@ binary; mobile links the library through `#[cfg_attr(mobile, tauri::mobile_entry
 |---|---|
 | Windows desktop | **Builds and ships.** `.exe`, MSI and NSIS rebuilt and verified 2026-09-19, after the mobile config was added. |
 | macOS / Linux desktop | Config is platform-neutral; never built. Needs those hosts. |
-| Android | Config written, Rust targets installed, back button and touch behaviour done and verified in a browser. **`tauri android init` not yet run** — needs Android SDK + NDK and JDK 17+. |
+| Android | Config written, back button and touch behaviour done and verified in a browser. Built and signed for Google Play by `.github/workflows/android.yml` on a Linux runner (README.md, "Google Play") — **never run yet**. Not buildable on this machine: no SDK/NDK, JDK 8. |
 | iOS | Config written. **Cannot be touched from Windows** — see below. |
 
 `bundle.android` and `bundle.iOS` in `tauri.conf.json` are set explicitly
@@ -421,8 +421,23 @@ error: unrecognized subcommand 'ios'
 ```
 
 It is compiled out on non-macOS hosts. The `ios:init` / `ios:dev` scripts in
-`package.json` are correct but can only ever run on macOS with Xcode. Nothing
-in the repo can change this; it needs a Mac.
+`package.json` are correct but can only ever run on macOS with Xcode.
+
+So the iOS build runs in CI instead: `.github/workflows/ios.yml` on a
+GitHub-hosted `macos-26` runner (`ios init`, then `ios build`, then an
+`altool` upload to App Store Connect). There is no Mac and no VM on this side.
+Two consequences:
+
+- **`gen/apple` is regenerated on every run**, because `src-tauri/gen/` is
+  gitignored and nothing here can generate it. Changes to the Xcode project
+  have to be made through `tauri.conf.json` (`bundle.iOS`) or
+  `src-tauri/Info.ios.plist`, which the CLI merges at `ios build`, not at
+  init.
+- **The build number must not use `--build-number`.** In CLI 2.11.4 it
+  appends `.N` to the version, making `0.1.9.N`. That is four numbers, and
+  `CFBundleVersion` allows at most three. The workflow sets
+  `bundle.iOS.bundleVersion` to the run number instead; a bundle version that
+  is not semver passes through as it is.
 
 ### Mobile facts worth knowing before you touch the shell
 
@@ -478,8 +493,9 @@ fastest way to see which of the four steps above is still missing.
 
 ### Finishing the iOS port
 
-Needs a Mac; nothing else unblocks it. On macOS with Xcode and its command-line
-tools installed:
+From here, through CI: README.md, "The App Store", has the one-time Apple
+setup and the workflow. The steps below are for anyone who does have a Mac. On
+macOS with Xcode and its command-line tools installed:
 
 1. `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`
 2. `brew install cocoapods` — Tauri's iOS template uses it.

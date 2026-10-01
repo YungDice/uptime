@@ -194,9 +194,10 @@ it now; the People tab went from ~61 renders a second to 1.
 ### What was not verified, and why
 
 - **Android and iOS builds.** No Android SDK or NDK is installed here and the
-  JDK is 8 (Android needs 17+); iOS needs macOS. The Tauri project is
-  configured for both and `npm run android:init` / `ios:init` are wired, but
-  neither has been run. Expect the usual first-run friction.
+  JDK is 8 (Android needs 17+); iOS needs macOS, so it is built on a GitHub
+  macOS runner by `.github/workflows/ios.yml` (see "The App Store"). The Tauri
+  project is configured for both, but neither has been built yet. Expect the
+  usual first-run friction.
 - **Push delivery.** `supabase/functions/nudge-check-in` implements FCM, APNs
   and WNS including the JWT signing each requires, but none of it has been run
   against a real provider — there are no credentials here. Budget real time for
@@ -593,6 +594,185 @@ Add-AppxPackage -Register src-tauri\target\msix\layout\AppxManifest.xml
 ```
 
 It appears in Start as the Store copy would. `Get-AppxPackage *UptimeStreak* | Remove-AppxPackage` removes it.
+
+### The App Store
+
+There is no Mac here, and Tauri's `ios` commands only exist on macOS. So the
+iPhone app is built by `.github/workflows/ios.yml` on a GitHub-hosted Mac
+(free, because this repo is public), signed there, and uploaded straight to
+App Store Connect. Everything after that - TestFlight, screenshots, review - is
+done in a browser. Nothing needs a Mac's Keychain: with an App Store Connect
+API key, Xcode on the runner makes the distribution certificate and the
+provisioning profile itself.
+
+**One-time setup**, all in a browser plus `gh`:
+
+1. **Join the Apple Developer Program** ($99 a year) at
+   developer.apple.com/programs, or in the Apple Developer app on an iPhone.
+   Enrolling as an organisation (to publish as Dice Entertainment) needs a
+   D-U-N-S number; as an individual it does not.
+2. **The team ID**, from developer.apple.com -> Account -> Membership details.
+   It is not a secret:
+
+   ```bash
+   gh variable set APPLE_DEVELOPMENT_TEAM --body "<team id>"
+   ```
+3. **Register the bundle ID** `com.yungdice.uptime`: Certificates, Identifiers
+   & Profiles -> Identifiers -> + -> App IDs -> App. No capabilities are needed
+   yet (Push Notifications will be, once something supplies a push token).
+4. **Create the app** in App Store Connect -> Apps -> + -> New App: iOS, that
+   bundle ID, any SKU. App Store names are unique across the whole store, so
+   the name reserved on Microsoft's may not be free here.
+5. **An API key**: App Store Connect -> Users and Access -> Integrations -> App
+   Store Connect API -> Team Keys -> +, with **Admin** access. Admin is what
+   lets it create the distribution certificate. The `.p8` downloads once, so
+   keep a copy off GitHub. A lost or leaked key costs nothing more than
+   revoking it and making another.
+
+   ```bash
+   gh secret set APPLE_API_KEY_P8 < AuthKey_<key id>.p8
+   gh secret set APPLE_API_KEY_ID --body "<key id>"
+   gh secret set APPLE_API_ISSUER --body "<issuer id>"
+   ```
+
+The `VITE_*` variables from the desktop setup above are shared. The workflow
+refuses to build without `VITE_SUPABASE_URL`, rather than send reviewers the
+demo cast.
+
+**Building.** Actions -> iOS -> Run workflow, or:
+
+```bash
+gh workflow run ios.yml
+```
+
+The version people see is `package.json`'s. The build number is the workflow's
+run number, which App Store Connect needs to rise with every upload. Apple
+takes up to half an hour to process a build before it shows under TestFlight.
+Untick *Upload* to build only; the IPA then waits in the run's artifacts, but
+an App Store-signed IPA cannot be installed directly, so TestFlight is the way
+onto a phone.
+
+**Trying it** needs an iPhone with the TestFlight app. Add yourself under
+TestFlight -> Internal Testing; internal builds skip review.
+
+**Submitting**: App Store Connect -> the app -> the version -> pick the build ->
+Add for Review. It also needs a privacy policy URL, the App Privacy answers, an
+age rating, and screenshots at 6.9" iPhone size. If the build runs on iPad too,
+which Tauri's template does by default, it needs 13" iPad screenshots as well.
+The export-compliance question is answered by `src-tauri/Info.ios.plist`
+(`ITSAppUsesNonExemptEncryption` false: the app's only encryption is the
+system's HTTPS).
+
+**What review is likely to reject**, checked against the App Review
+Guidelines on 2026-09-27:
+
+- **No way to delete an account in the app** (5.1.1(v)). Any app that creates
+  accounts must offer deletion inside it, and Uptime creates one on first tap.
+- **No report or block** (1.2). Handles, nicknames and avatars are content
+  other users make, and an app showing it must let people report it and block
+  whoever posted it.
+- **The upgrade bought elsewhere** (3.1.3(b)). The phone build hides the offer
+  (`canBuyHere`), but a whole clock bought on the desktop still unlocks here.
+  Apple allows that only if the same thing is also sold as an in-app purchase.
+  On the US storefront, linking out to the web checkout is now allowed as
+  well.
+
+**Not verified.** The workflow has never run: nothing iOS can run on Windows.
+Expect the first runs to need fixing from their logs.
+
+### Google Play
+
+There is no Android SDK here either, so the phone app is built by
+`.github/workflows/android.yml` on a GitHub-hosted Linux runner, which already
+carries the SDK and NDK. It produces an App Bundle signed with the *upload
+key*; Google re-signs what it serves with its own app signing key (Play App
+Signing), so a lost upload key can be reset by Google rather than ending the
+listing.
+
+**One-time setup:**
+
+1. **A Play Console developer account** ($25 once) at play.google.com/console.
+   A *personal* account made after November 2023 cannot publish to production
+   straight away: it first needs a closed test with at least 12 testers opted
+   in for 14 days in a row. An organisation account skips that.
+2. **Create the app**: Play Console -> Create app. App, free, default language
+   en-US. The package name is fixed forever once a bundle is uploaded, and it
+   is `com.yungdice.uptime` (the `identifier` in `tauri.conf.json`). The name
+   can match the Microsoft Store's, "Uptime: Streak Stopwatch" (30 characters
+   at most).
+3. **The upload key.** The JDK that came with Android Studio is new enough
+   (the system one is 8). The keystore and its password stay off GitHub
+   except as secrets, and a copy should be kept somewhere safe:
+
+   ```bash
+   "/c/Program Files/Android/openjdk/jdk-21.0.8/bin/keytool" -genkeypair -v -storetype PKCS12 -keystore upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+   ```bash
+   base64 -w0 upload.jks | gh secret set ANDROID_UPLOAD_KEYSTORE
+   ```
+
+   ```bash
+   gh secret set ANDROID_UPLOAD_KEYSTORE_PASSWORD
+   ```
+
+   The last one prompts, so the password stays out of shell history. An alias
+   other than `upload` goes in the `ANDROID_UPLOAD_KEY_ALIAS` variable.
+4. **The first bundle goes up by hand.** Google's API refuses uploads for an
+   app that has never had one. Run the workflow with *Upload* unticked,
+   download `uptime-<n>-android` from the run, and upload the `.aab` in Play
+   Console -> Test and release -> Testing -> Internal testing -> Create new
+   release. Accept Play App Signing when asked.
+5. **A service account, for every upload after that.** Google Cloud console ->
+   the project Play Console is linked to -> enable the *Google Play Android
+   Developer API* -> IAM -> Service accounts -> create one -> Keys -> JSON.
+   Then Play Console -> Users and permissions -> Invite new users -> the
+   service account's email, with *Release to testing tracks* (and *Release to
+   production* when it is time) for this app.
+
+   ```bash
+   gh secret set GOOGLE_PLAY_SERVICE_ACCOUNT_JSON < service-account.json
+   ```
+
+The `VITE_*` variables are shared with the desktop build, and the workflow
+refuses to build without `VITE_SUPABASE_URL` for the same reason as iOS.
+
+**Building.** Actions -> Android -> Run workflow, or:
+
+```bash
+gh workflow run android.yml -f upload=true -f track=internal
+```
+
+The version people see is `package.json`'s; the version code is the run
+number, which Play needs to rise with every upload. Uploads land as a *draft*
+release on the chosen track and reach nobody until rolled out in Play Console.
+Internal testing needs no review and is the quickest way onto a phone.
+
+**The listing.** `store/google-play/` has the 512 x 512 icon and the
+1024 x 500 feature graphic. `store/tiktok/` (1080 x 1920) fits the phone
+screenshot slot, except `03-send.png`: it shows "Unlock it for $5", which the
+Android build hides, and Play treats a screenshot of something the app does
+not do as misleading. It also needs a privacy policy URL, the Data safety
+form, a content rating questionnaire and target audience (not children).
+Under *App access*, give reviewers an account, since sending and reviving need
+one.
+
+**What review is likely to reject**, against the Developer Program Policies
+as of 2026-09-29 - the same gaps as the App Store:
+
+- **No way to delete an account in the app** (User Data policy, account
+  deletion). An app that creates accounts must offer deletion inside it *and*
+  at a web address given in the Data safety form.
+- **No report or block** (User Generated Content). Handles, nicknames and
+  avatars are made by other users.
+- **No privacy policy** anywhere on the site yet.
+
+The upgrade bought elsewhere is not a problem on Play: it allows content bought
+outside the app to be used inside it, as long as the app neither sells it nor
+points at where it is sold, which `canBuyHere` already ensures.
+
+**Not verified.** The workflow has never run. Expect the first runs to need
+fixing from their logs.
 
 ---
 
